@@ -4,18 +4,11 @@ use crate::identifier::*;
 pub struct Token {
     pub token_kind: TokenKind,
     pub token: String,
-    pub row: usize,
-    pub column: usize,
 }
 
 impl Token {
-    pub fn new(token_kind: TokenKind, token: String, row: usize, column: usize) -> Self {
-        Self {
-            token_kind,
-            token,
-            row,
-            column,
-        }
+    pub fn new(token_kind: TokenKind, token: String) -> Self {
+        Self { token_kind, token }
     }
 }
 
@@ -83,8 +76,6 @@ pub struct Lexer {
     code: Vec<char>,
     token_buffer: String,
     index: usize,
-    row: usize,
-    column: usize,
 }
 
 impl Lexer {
@@ -93,8 +84,6 @@ impl Lexer {
             code: code.chars().collect(),
             token_buffer: "".to_string(),
             index: 0,
-            row: 1,
-            column: 1,
         }
     }
 
@@ -317,7 +306,7 @@ impl Lexer {
             LiteralKind::OctLiteral => self.eat_oct_digit(), // OctLiteral ::= 0o (OctDigit | _)* OctDigit (OctDigit | _)*
             LiteralKind::DecLiteral => self.eat_dec_digit(), // DecLiteral ::= DecDigit (DecDigit | _)*
             LiteralKind::HexLiteral => self.eat_hex_digit(), // HexLiteral ::= 0x (HexDigit | _)* HexDigit (HexDigit | _)*
-            _ => return LiteralKind::Unknown,
+            _ => false,
         } {
             return LiteralKind::Unknown;
         }
@@ -784,18 +773,10 @@ impl Lexer {
 
     fn next(&mut self) {
         self.index += 1;
-        let Some(c) = self.get() else {
-            return;
-        };
-        self.column += 1;
-        if c == '\n' {
-            self.row += 1;
-            self.column = 1;
-        }
     }
 
     fn new_token(&mut self, token_kind: TokenKind) -> Token {
-        let token = Token::new(token_kind, self.token_buffer.clone(), self.row, self.column);
+        let token = Token::new(token_kind, self.token_buffer.clone());
         self.token_buffer.clear();
 
         token
@@ -807,26 +788,5 @@ impl Lexer {
         };
 
         check_c == c
-    }
-
-    fn is_eof(&self) -> bool {
-        self.code.len() == self.index
-    }
-
-    fn get_current_line(&self) -> String {
-        // 次の改行までの位置を探す
-        let start = self.index - self.column;
-        let mut end = 0;
-        loop {
-            let Some(c) = self.code.get(self.index + end) else {
-                break;
-            };
-            if *c == '\n' {
-                break;
-            }
-            end += 1;
-        }
-
-        self.code[start..end].iter().collect()
     }
 }
