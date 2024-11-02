@@ -1,6 +1,7 @@
 #[cfg(test)]
-mod token {
-    use crate::lexer::*;
+mod test {
+    use crate::lexer::Lexer;
+    use crate::{LiteralKind, Token, TokenKind};
 
     // 正常パターン
     fn check_equal(test_code: &str, token_kind: TokenKind) {
@@ -29,15 +30,15 @@ mod token {
 
     #[test]
     fn identifier_or_keyword() {
-        check_equal("hogFuga", TokenKind::Identifier);
-        check_equal("_hoge", TokenKind::Identifier);
-        check_equal("hoge123", TokenKind::Identifier);
-        check_equal("__hoge__", TokenKind::Identifier);
-        check_equal("_____", TokenKind::Identifier);
-        check_equal("こんにちは", TokenKind::Identifier);
+        check_equal("hogeFuga", TokenKind::Identifier("".to_string()));
+        check_equal("_hoge", TokenKind::Identifier("".to_string()));
+        check_equal("hoge123", TokenKind::Identifier("".to_string()));
+        check_equal("__hoge__", TokenKind::Identifier("".to_string()));
+        check_equal("_____", TokenKind::Identifier("".to_string()));
+        check_equal("こんにちは", TokenKind::Identifier("".to_string()));
 
-        check_not_equal("0123456789", TokenKind::Identifier);
-        check_not_equal("_", TokenKind::Identifier);
+        check_not_equal("0123456789", TokenKind::Identifier("".to_string()));
+        check_not_equal("_", TokenKind::Identifier("".to_string()));
     }
 
     #[test]
