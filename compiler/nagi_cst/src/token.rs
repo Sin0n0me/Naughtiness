@@ -15,7 +15,7 @@ pub enum BinaryOperator {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum LiteralKind {
-    Bool,
+    Bool(bool),
     Byte,
     Char,
     Integer,
@@ -46,6 +46,7 @@ pub enum RightParenthesis {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Literal {
     pub literal_kind: LiteralKind,
+    pub prefix: String,
     pub symbol: String,
     pub suffix: String,
 }
@@ -54,6 +55,7 @@ impl Literal {
     pub fn new(literal_kind: LiteralKind, symbol: &str) -> Self {
         Self {
             literal_kind,
+            prefix: "".to_string(),
             symbol: symbol.to_string(),
             suffix: "".to_string(),
         }

@@ -39,7 +39,7 @@ pub enum CSTNodeKind {
     },
 
     Literal {
-        token: Token,
+        literal: Literal,
         row: usize,
         column: usize,
     },
@@ -97,6 +97,27 @@ pub enum CSTNodeKind {
         path_in_expression: Box<CSTNode>,
     },
 
+    GroupedExpression {
+        left_parenthesis: Box<CSTNode>,
+        expression: Box<CSTNode>,
+        right_parenthesis: Box<CSTNode>,
+    },
+
+    //  CallExpression ::= Expression `(` CallParams? `)`
+    CallExpression {
+        expression: Box<CSTNode>,
+        left_parenthesis: Box<CSTNode>,
+        call_params: Option<Box<CSTNode>>,
+        right_parenthesis: Box<CSTNode>,
+    },
+
+    // CallParams     ::= Expression ( `,` Expression )* `,`?
+    CallParams {
+        expression: Box<CSTNode>,
+        comma_and_expression: Vec<(CSTNode, CSTNode)>,
+        comma: Option<Box<CSTNode>>,
+    },
+
     // ReturnExpression ::= return (Expression)?
     ReturnExpression {
         return_keyword: Box<CSTNode>,
@@ -115,10 +136,10 @@ pub enum CSTNodeKind {
     Item,
 
     BlockExpression {
-        left: Box<CSTNode>,
+        left_brace: Box<CSTNode>,
         inner_attribute: Vec<CSTNode>,
         statements: Option<Box<CSTNode>>,
-        right: Box<CSTNode>,
+        right_brace: Box<CSTNode>,
     },
 
     // LetStatement ::= OuterAttribute* (`ur` | `sr` | `nr` | `let`)

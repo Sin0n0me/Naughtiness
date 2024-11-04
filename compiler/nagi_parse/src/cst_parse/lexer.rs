@@ -61,11 +61,19 @@ impl Lexer {
         self.position = position;
     }
 
-    pub fn peek_glue(&mut self) -> Token {
+    pub fn next_glue(&mut self) -> Token {
         let Some((op, index)) = self.glue() else {
             return self.peek();
         };
         self.position += index;
+
+        op
+    }
+
+    pub fn peek_glue(&mut self) -> Token {
+        let Some((op, _)) = self.glue() else {
+            return self.peek();
+        };
 
         op
     }
@@ -204,6 +212,17 @@ fn convert_token(token: &nagi_lexer::Token) -> Option<Token> {
             _ => return None,
         },
 
+        nagi_lexer::TokenKind::LeftParenthesis => {
+            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+        }
+        nagi_lexer::TokenKind::LeftBrackets => Token::LeftParenthesis(LeftParenthesis::Brackets),
+        nagi_lexer::TokenKind::LeftBrace => Token::LeftParenthesis(LeftParenthesis::Brace),
+        nagi_lexer::TokenKind::RightParenthesis => {
+            Token::RightParenthesis(RightParenthesis::Parenthesis)
+        }
+        nagi_lexer::TokenKind::RightBrackets => Token::RightParenthesis(RightParenthesis::Brackets),
+        nagi_lexer::TokenKind::RightBrace => Token::RightParenthesis(RightParenthesis::Brace),
+
         nagi_lexer::TokenKind::Equal => Token::Equal,
         nagi_lexer::TokenKind::Plus => Token::Plus,
         nagi_lexer::TokenKind::Minus => Token::Minus,
@@ -229,7 +248,7 @@ fn convert_token(token: &nagi_lexer::Token) -> Option<Token> {
         nagi_lexer::TokenKind::Eof => Token::Eof,
 
         nagi_lexer::TokenKind::WhiteSpace => return None,
-        _ => panic!(),
+        _ => panic!("{:?}", token),
     };
 
     Some(res)

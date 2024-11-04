@@ -7,15 +7,17 @@ mod test {
         let mut lexer = Lexer::new(code);
         let mut parser = CSTParser::new(&lexer.tokenize());
 
-        if let Ok(cst) = parser.parse() {
-            cst.write_cst("test.json");
-        } else {
-            assert!(false);
+        match parser.parse() {
+            Ok(cst) => cst.write_cst("test.json"),
+            Err(error) => {
+                parser.error(error);
+                assert!(false);
+            }
         }
     }
 
     #[test]
     fn check_() {
-        parse("100 + fuga * 30 - 40000 / hogehoge + 200 - 100 * 10;");
+        parse("{ let a = 100 + 300 * 30 - 40000 / 1000 + 200 - 100 * 10; }");
     }
 }

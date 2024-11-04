@@ -36,7 +36,7 @@ pub fn infix_binding_power(op: &Token) -> Option<(u16, u16)> {
         Token::DotDot | Token::DotDotEqual => (4, 3),
         Token::LeftAllow => (3, 2),
 
-        // Assign
+        // Assignment
         Token::Equal => (2, 1),
         Token::PlusEqual => (2, 1),
         Token::MinusEqual => (2, 1),
