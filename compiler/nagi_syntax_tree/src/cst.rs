@@ -1,4 +1,3 @@
-use crate::expression::Expression;
 use crate::token::*;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -44,7 +43,46 @@ pub enum CSTNodeKind {
         column: usize,
     },
 
+    // InnerAttribute ::= `#` `!` `[` Attribute `]`
+    InnerAttribute {
+        pound: Box<CSTNode>,
+        exclamation: Box<CSTNode>,
+        left_brackets: Box<CSTNode>,
+        attribute: Box<CSTNode>,
+        right_brackets: Box<CSTNode>,
+    },
+
+    // OuterAttribute ::= `#` `[` Attribute `]`
+    OuterAttribute {
+        pound: Box<CSTNode>,
+        left_brackets: Box<CSTNode>,
+        attribute: Box<CSTNode>,
+        right_brackets: Box<CSTNode>,
+    },
+
+    // Attribute ::= SimplePath AttributeInput?  | `unsafe` `(` SimplePath AttributeInput? `)`
     Attribute,
+
+    // Visibility ::= `pub`
+    //              | `pub` `(` `crate` `)`
+    //              | `pub` `(` `self` `)`
+    //              | `pub` `(` `super` `)`
+    //              | `pub` `(` `in` SimplePath `)`
+    Visibility {
+        pub_keyword: Box<CSTNode>,
+    },
+
+    // Item ::= OuterAttribute* VisItem | MacroItem
+    Item,
+
+    // FunctionQualifiers ::= `const`? `async`? ItemSafety? (`extern` Abi?)?
+    FunctionQualifiers {
+        const_keyword: Option<Box<CSTNode>>,
+        async_keyword: Option<Box<CSTNode>>,
+        item_safety: Option<Box<CSTNode>>,
+        extern_keyword: Option<Box<CSTNode>>,
+        abi: Option<Box<CSTNode>>,
+    },
 
     // Expression ::= ExpressionWithoutBlock | ExpressionWithBlock
     Expression {
@@ -97,6 +135,20 @@ pub enum CSTNodeKind {
         path_in_expression: Box<CSTNode>,
     },
 
+    // PathInExpression ::= `::`? PathExprSegment (`::` PathExprSegment)*
+    PathInExpression {
+        path_separater: Option<Box<CSTNode>>,
+        path_expr_segment: Box<CSTNode>,
+        repeat_path_expr_segment: Vec<(CSTNode, CSTNode)>,
+    },
+
+    // PathExprSegment ::= PathIdentSegment (`::` GenericArgs)?
+    PathExprSegment {
+        path_ident_segment: Box<CSTNode>,
+        generic_args: Option<(Box<CSTNode>, Box<CSTNode>)>,
+    },
+
+    // GroupedExpression ::= `(` Expression `)`
     GroupedExpression {
         left_parenthesis: Box<CSTNode>,
         expression: Box<CSTNode>,
@@ -131,9 +183,6 @@ pub enum CSTNodeKind {
     Statement {
         statement: Box<CSTNode>,
     },
-
-    //
-    Item,
 
     BlockExpression {
         left_brace: Box<CSTNode>,

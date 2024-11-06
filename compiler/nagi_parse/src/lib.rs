@@ -1,5 +1,6 @@
 mod ast_parse;
 mod cst_parse;
+mod expression;
 mod lexer;
 
 #[cfg(test)]

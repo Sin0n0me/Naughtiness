@@ -1,5 +1,5 @@
-use nagi_cst::keywords::Keyword;
-use nagi_cst::token::*;
+use nagi_syntax_tree::keywords::Keyword;
+use nagi_syntax_tree::token::*;
 
 #[derive(Debug)]
 pub struct Lexer {

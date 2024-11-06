@@ -1,7 +1,6 @@
-use crate::expression::*;
 use crate::lexer::Lexer;
 
-use nagi_syntax_tree::cst::*;
+use nagi_syntax_tree::ast::*;
 use nagi_syntax_tree::keywords::Keyword;
 use nagi_syntax_tree::token::*;
 
@@ -29,15 +28,15 @@ pub enum Error {
     NotExpected, // 期待したトークンではなかった
 }
 
-pub struct CSTParser {
+pub struct ASTParser {
     lexer: Lexer,
-    memo: HashMap<ParseMemoKey, Option<CSTNode>>,
+    memo: HashMap<ParseMemoKey, Option<ASTNode>>,
     min_bp: u16,
     last_write_memo: ParseMemoKey,
 }
 
 // TODO 機能ごとの分割
-impl CSTParser {
+impl ASTParser {
     pub fn new(token_list: &Vec<nagi_lexer::Token>) -> Self {
         Self {
             lexer: Lexer::new(token_list),
@@ -50,7 +49,7 @@ impl CSTParser {
         }
     }
 
-    pub fn parse(&mut self) -> Result<CSTNode, Error> {
+    pub fn parse(&mut self) -> Result<ASTNode, Error> {
         let mut node = self.expression()?;
         Ok(node)
     }
@@ -60,7 +59,7 @@ impl CSTParser {
     //
 
     // InnerAttribute ::= `#` `!` `[` Attribute `]`
-    fn inner_attribute(&mut self) -> Result<CSTNode, Error> {
+    fn inner_attribute(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("InnerAttribute");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -69,39 +68,38 @@ impl CSTParser {
         };
 
         // `#`
-        if matches!(self.lexer.peek(), Token::Pound) {
+        let pound = Box::new(self.make_factor());
+        if matches!(self.lexer.next(), Token::Pound) {
             return Err(Error::NotExpected);
         }
-        let pound = Box::new(self.make_factor_and_next());
 
         // `!`
-        if matches!(self.lexer.peek(), Token::Not) {
+        let exclamation = Box::new(self.make_factor());
+        if matches!(self.lexer.next(), Token::Not) {
             return Err(Error::NotExpected);
         }
-        let exclamation = Box::new(self.make_factor_and_next());
 
         // `[`
+        let left_brackets = Box::new(self.make_factor());
         if matches!(
-            self.lexer.peek(),
+            self.lexer.next(),
             Token::LeftParenthesis(LeftParenthesis::Brackets)
         ) {
             return Err(Error::NotExpected);
         }
-        let left_brackets = Box::new(self.make_factor_and_next());
 
-        // Attribute
         let attribute = Box::new(self.attribute()?);
 
         // `]`
+        let right_brackets = Box::new(self.make_factor());
         if matches!(
-            self.lexer.peek(),
+            self.lexer.next(),
             Token::RightParenthesis(RightParenthesis::Brackets)
         ) {
             return Err(Error::NotExpected);
         }
-        let right_brackets = Box::new(self.make_factor_and_next());
 
-        let node = CSTNode::new(CSTNodeKind::InnerAttribute {
+        let node = ASTNode::new(ASTNodeKind::InnerAttribute {
             pound,
             exclamation,
             left_brackets,
@@ -114,7 +112,7 @@ impl CSTParser {
     }
 
     // OuterAttribute ::= `#` `[` Attribute `]`
-    fn outer_attribute(&mut self) -> Result<CSTNode, Error> {
+    fn outer_attribute(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("OuterAttribute");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -126,29 +124,30 @@ impl CSTParser {
         if !matches!(self.lexer.peek(), Token::Pound) {
             return Err(Error::NotExpected);
         }
-        let pound = Box::new(self.make_factor_and_next());
+        let pound = Box::new(self.make_factor());
+        self.lexer.next();
 
         // `[`
+        let left_brackets = Box::new(self.make_factor());
         if !matches!(
-            self.lexer.peek(),
+            self.lexer.next(),
             Token::LeftParenthesis(LeftParenthesis::Brackets)
         ) {
             return Err(Error::NotExpected);
         }
-        let left_brackets = Box::new(self.make_factor_and_next());
 
         let attribute = Box::new(self.attribute()?);
 
         // `]`
+        let right_brackets = Box::new(self.make_factor());
         if !matches!(
-            self.lexer.peek(),
+            self.lexer.next(),
             Token::RightParenthesis(RightParenthesis::Brackets)
         ) {
             return Err(Error::NotExpected);
         }
-        let right_brackets = Box::new(self.make_factor_and_next());
 
-        let node = CSTNode::new(CSTNodeKind::OuterAttribute {
+        let node = ASTNode::new(ASTNodeKind::OuterAttribute {
             pound,
             left_brackets,
             attribute,
@@ -160,12 +159,12 @@ impl CSTParser {
     }
 
     // Attribute ::= SimplePath AttributeInput?  | `unsafe` `(` SimplePath AttributeInput? `)`
-    fn attribute(&mut self) -> Result<CSTNode, Error> {
+    fn attribute(&mut self) -> Result<ASTNode, Error> {
         Err(Error::E)
     }
 
     // AttributeInput ::= DelimTokenTree | `=` Expression
-    fn attribute_input(&mut self) -> Result<CSTNode, Error> {
+    fn attribute_input(&mut self) -> Result<ASTNode, Error> {
         Err(Error::E)
     }
 
@@ -174,14 +173,11 @@ impl CSTParser {
     //              | `pub` `(` `self` `)`
     //              | `pub` `(` `super` `)`
     //              | `pub` `(` `in` SimplePath `)`
-    fn visibility(&mut self) -> Result<CSTNode, Error> {
-        // TODO
-
+    fn visibility(&mut self) -> Result<ASTNode, Error> {
         // `pub`
-        let mut pub_keyword = CSTNode::new(CSTNodeKind::Visibility {
+        let mut pub_keyword = ASTNode::new(ASTNodeKind::Visibility {
             pub_keyword: Box::new(self.make_factor()),
         });
-
         if matches!(self.lexer.next(), Token::Keyword(Keyword::Pub)) {
             return Err(Error::NotExpected);
         }
@@ -196,27 +192,9 @@ impl CSTParser {
         Ok(pub_keyword)
     }
 
-    //
-    // Items
-    //
-
     // Item ::= OuterAttribute* VisItem | MacroItem
-    fn item(&mut self) -> Result<CSTNode, Error> {
-        let key = self.make_key("Item");
-        match self.get_memo(&key) {
-            MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
-            MemoResult::None => self.write_memo(&key, None),
-        };
-
-        // OuterAttribute*
-        loop {
-            let Ok(expr) = self.outer_attribute() else {
-                break;
-            };
-        }
-
-        // TODO
+    fn item(&mut self) -> Result<ASTNode, Error> {
+        self.outer_attribute();
 
         self.vis_item()
     }
@@ -224,53 +202,21 @@ impl CSTParser {
     // VisItem ::= Visibility?
     //           (
     //             Module
-    //           | ExternCrate
-    //           | UseDeclaration
-    //           | Function
-    //           | TypeAlias
-    //           | Struct
-    //           | Enumeration
-    //           | Union
-    //           | ConstantItem
-    //           | StaticItem
-    //           | Trait
-    //           | Implementation
-    //           | ExternBlock
-    //           )
-    fn vis_item(&mut self) -> Result<CSTNode, Error> {
-        let key = self.make_key("VisItem");
-        match self.get_memo(&key) {
-            MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
-            MemoResult::None => self.write_memo(&key, None),
-        };
+    fn vis_item(&mut self) -> Result<ASTNode, Error> {
+        self.visibility();
 
-        // TODO
-        let mut visibility = None;
-
-        // Visibility?
-        if let Ok(expr) = self.visibility() {
-            visibility = Some(0);
-            // TODO
-        }
-
-        // Function
-        if let Ok(expr) = self.function() {
-            return Ok(expr);
-        }
+        self.function()?;
 
         Err(Error::E)
     }
 
-    //
     // Functions
-    //
 
     // Function ::= FunctionQualifiers `fn` Identifier GenericParams?
     //             `(` FunctionParameters? `)`
     //             FunctionReturnType? WhereClause?
     //             ( BlockExpression | `;` )
-    fn function(&mut self) -> Result<CSTNode, Error> {
+    fn function(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("Function");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -282,13 +228,13 @@ impl CSTParser {
         let function_qualifiers = self.function_qualifiers()?;
 
         // `fn`
-        if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Fn)) {
+        let fn_keyword = Box::new(self.make_factor());
+        if !matches!(self.lexer.next(), Token::Keyword(Keyword::Fn)) {
             return Err(Error::E);
         }
-        let fn_keyword = Box::new(self.make_factor_and_next());
 
         // Identifier
-        if !matches!(self.lexer.peek(), Token::Identifier(_)) {
+        if !matches!(self.lexer.next(), Token::Identifier(_)) {
             return Err(Error::E);
         }
 
@@ -298,13 +244,13 @@ impl CSTParser {
         }
 
         // `(`
+        let left_parenthesis = Box::new(self.make_factor());
         if !matches!(
-            self.lexer.peek(),
+            self.lexer.next(),
             Token::LeftParenthesis(LeftParenthesis::Parenthesis)
         ) {
             return Err(Error::NotExpected);
         }
-        let left_parenthesis = Box::new(self.make_factor_and_next());
 
         // FunctionParameters?
         let mut call_params = None;
@@ -337,7 +283,7 @@ impl CSTParser {
     }
 
     // FunctionQualifiers ::= `const`? `async`? ItemSafety? (`extern` Abi?)?
-    fn function_qualifiers(&mut self) -> Result<CSTNode, Error> {
+    fn function_qualifiers(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("FunctionQualifiers");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -384,40 +330,46 @@ impl CSTParser {
     }
 
     // ItemSafety ::= `safe` | `unsafe`
-    fn item_safety(&mut self) -> Result<CSTNode, Error> {
+    fn item_safety(&mut self) -> Result<ASTNode, Error> {
         match self.lexer.peek() {
-            Token::Keyword(Keyword::Unsafe) => Ok(self.make_factor_and_next()),
+            Token::Keyword(Keyword::Unsafe) => {
+                self.lexer.next();
+                Ok(self.make_factor())
+            }
             Token::Identifier(identifier) => {
                 if identifier != "safe" {
                     return Err(Error::NotExpected);
                 }
-                Ok(self.make_factor_and_next())
+                self.lexer.next();
+
+                Ok(self.make_factor())
             }
             _ => Err(Error::NotExpected),
         }
     }
 
     // Abi ::= STRING_LITERAL | RAW_STRING_LITERAL
-    fn abi(&mut self) -> Result<CSTNode, Error> {
+    fn abi(&mut self) -> Result<ASTNode, Error> {
         match self.lexer.peek() {
             Token::Literal(literal) => {
                 if !matches!(literal.literal_kind, LiteralKind::Str | LiteralKind::StrRaw) {
                     return Err(Error::NotExpected);
                 }
 
-                Ok(self.make_factor_and_next())
+                self.lexer.next();
+                Ok(self.make_factor())
             }
             _ => Err(Error::NotExpected),
         }
     }
 
     // GenericParams
-    fn generic_params(&mut self) -> Result<CSTNode, Error> {
+    fn generic_params(&mut self) -> Result<ASTNode, Error> {
         Err(Error::E)
     }
 
     // FunctionParameters ::= SelfParam `,`? | (SelfParam `,`)? FunctionParam (`,` FunctionParam)* `,`?
-    fn function_parameters(&mut self) -> Result<CSTNode, Error> {
+    fn function_parameters(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("FunctionParameters");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -445,7 +397,7 @@ impl CSTParser {
     }
 
     // SelfParam ::= OuterAttribute* ( ShorthandSelf | TypedSelf )
-    fn self_param(&mut self) -> Result<CSTNode, Error> {
+    fn self_param(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("Selfparam");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -471,14 +423,7 @@ impl CSTParser {
     }
 
     // ShorthandSelf ::= (`&` | `&` Lifetime)? `mut`? `self`
-    fn shorthand_self(&mut self) -> Result<CSTNode, Error> {
-        let key = self.make_key("ShorthandSelf");
-        match self.get_memo(&key) {
-            MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
-            MemoResult::None => self.write_memo(&key, None),
-        };
-
+    fn shorthand_self(&mut self) -> Result<ASTNode, Error> {
         // (`&` | `&` Lifetime)?
         if matches!(self.lexer.peek(), Token::And) {
             // TODO
@@ -498,14 +443,7 @@ impl CSTParser {
     }
 
     // TypedSelf ::= `mut`? `self` `:` Type
-    fn typed_self(&mut self) -> Result<CSTNode, Error> {
-        let key = self.make_key("TypedSelf");
-        match self.get_memo(&key) {
-            MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
-            MemoResult::None => self.write_memo(&key, None),
-        };
-
+    fn typed_self(&mut self) -> Result<ASTNode, Error> {
         let mut node = self.make_factor();
 
         // `mut`?
@@ -530,7 +468,7 @@ impl CSTParser {
     }
 
     // FunctionParam ::= OuterAttribute* ( FunctionParamPattern | `...` | Type )
-    fn function_param(&mut self) -> Result<CSTNode, Error> {
+    fn function_param(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("FunctionParam");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -558,14 +496,7 @@ impl CSTParser {
     }
 
     // FunctionParamPattern ::= PatternNoTopAlt `:` ( Type | `...` )
-    fn function_param_pattern(&mut self) -> Result<CSTNode, Error> {
-        let key = self.make_key("FunctionParamPattern");
-        match self.get_memo(&key) {
-            MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
-            MemoResult::None => self.write_memo(&key, None),
-        };
-
+    fn function_param_pattern(&mut self) -> Result<ASTNode, Error> {
         // PatternNoTopAlt
         self.pattern_no_top_alt()?;
 
@@ -585,7 +516,7 @@ impl CSTParser {
     }
 
     // FunctionReturnType ::= `->` Type
-    fn function_return_type(&mut self) -> Result<CSTNode, Error> {
+    fn function_return_type(&mut self) -> Result<ASTNode, Error> {
         Err(Error::E)
     }
 
@@ -596,7 +527,7 @@ impl CSTParser {
     //
 
     // Expression ::= ExpressionWithoutBlock | ExpressionWithBlock
-    fn expression(&mut self) -> Result<CSTNode, Error> {
+    fn expression(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("Expression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -626,7 +557,7 @@ impl CSTParser {
     //                              | CallExpression | MethodCallExpression | FieldExpression | ClosureExpression | AsyncBlockExpression
     //                              | ContinueExpression | BreakExpression | RangeExpression | ReturnExpression | UnderscoreExpression | MacroInvocation
     //                           )
-    fn expression_without_block(&mut self) -> Result<CSTNode, Error> {
+    fn expression_without_block(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("ExpressionWithoutBlock");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -634,13 +565,10 @@ impl CSTParser {
             MemoResult::None => self.write_memo(&key, None),
         };
 
-        loop {
-            if let Ok(expr) = self.outer_attribute() {
-                // TODO
-            } else {
-                self.backtrack(&key);
-                break;
-            }
+        if let Ok(expr) = self.outer_attribute() {
+            // TODO
+        } else {
+            self.backtrack(&key);
         }
 
         // OperatorExpression
@@ -702,7 +630,7 @@ impl CSTParser {
         Err(Error::E)
     }
 
-    fn literal_expression(&mut self) -> Result<CSTNode, Error> {
+    fn literal_expression(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("LiteralExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -712,18 +640,18 @@ impl CSTParser {
 
         let pos = self.lexer.get_sorce_position();
         let result = match self.lexer.next() {
-            Token::Literal(literal) => Ok(CSTNode::new(CSTNodeKind::Literal {
+            Token::Literal(literal) => Ok(ASTNode::new(ASTNodeKind::Literal {
                 literal,
                 row: pos.0,
                 column: pos.1,
             })),
 
-            Token::Keyword(Keyword::True) => Ok(CSTNode::new(CSTNodeKind::Literal {
+            Token::Keyword(Keyword::True) => Ok(ASTNode::new(ASTNodeKind::Literal {
                 literal: Literal::new(LiteralKind::Bool(true), ""),
                 row: pos.0,
                 column: pos.1,
             })),
-            Token::Keyword(Keyword::False) => Ok(CSTNode::new(CSTNodeKind::Literal {
+            Token::Keyword(Keyword::False) => Ok(ASTNode::new(ASTNodeKind::Literal {
                 literal: Literal::new(LiteralKind::Bool(false), ""),
                 row: pos.0,
                 column: pos.1,
@@ -740,7 +668,7 @@ impl CSTParser {
     }
 
     // PathExpression ::= PathInExpression | QualifiedPathInExpression
-    fn path_expression(&mut self) -> Result<CSTNode, Error> {
+    fn path_expression(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("PathExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -766,7 +694,7 @@ impl CSTParser {
     }
 
     // PathInExpression ::= `::`? PathExprSegment (`::` PathExprSegment)*
-    fn path_in_expression(&mut self) -> Result<CSTNode, Error> {
+    fn path_in_expression(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("PathInExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -780,7 +708,7 @@ impl CSTParser {
         let glue_token = self.lexer.peek_glue();
         if matches!(glue_token, Token::PathSeparater) {
             let pos = self.lexer.get_sorce_position();
-            path_separater = Some(Box::new(CSTNode::new(CSTNodeKind::Factor {
+            path_separater = Some(Box::new(ASTNode::new(ASTNodeKind::Factor {
                 token: glue_token,
                 row: pos.0,
                 column: pos.1,
@@ -792,7 +720,7 @@ impl CSTParser {
         let path_expr_segment = Box::new(self.path_expr_segment()?);
 
         // (`::` PathExprSegment)*
-        let mut repeat_path_expr_segment = Vec::<(CSTNode, CSTNode)>::new();
+        let mut repeat_path_expr_segment = Vec::<(ASTNode, ASTNode)>::new();
         loop {
             // `::`
             let pos = self.lexer.get_sorce_position();
@@ -807,7 +735,7 @@ impl CSTParser {
             };
 
             repeat_path_expr_segment.push((
-                CSTNode::new(CSTNodeKind::Factor {
+                ASTNode::new(ASTNodeKind::Factor {
                     token: Token::PathSeparater,
                     row: pos.0,
                     column: pos.1,
@@ -816,7 +744,7 @@ impl CSTParser {
             ));
         }
 
-        let node = CSTNode::new(CSTNodeKind::PathInExpression {
+        let node = ASTNode::new(ASTNodeKind::PathInExpression {
             path_separater,
             path_expr_segment,
             repeat_path_expr_segment,
@@ -827,7 +755,7 @@ impl CSTParser {
     }
 
     // PathExprSegment ::= PathIdentSegment (`::` GenericArgs)?
-    fn path_expr_segment(&mut self) -> Result<CSTNode, Error> {
+    fn path_expr_segment(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("PathExprSegment");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -845,14 +773,14 @@ impl CSTParser {
             // GenericArgs
         }
 
-        Ok(CSTNode::new(CSTNodeKind::PathExprSegment {
+        Ok(ASTNode::new(ASTNodeKind::PathExprSegment {
             path_ident_segment,
             generic_args,
         }))
     }
 
     // PathIdentSegment   ::= Identifier | `super` | `self` | `Self` | `crate` | `$crate`
-    fn path_ident_segment(&mut self) -> Result<CSTNode, Error> {
+    fn path_ident_segment(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("PathIdentSegment");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -880,40 +808,14 @@ impl CSTParser {
         }
     }
 
-    // QualifiedPathInExpression ::= QualifiedPathType (`::` PathExprSegment)+
-    fn qualified_path_in_expression(&mut self) -> Result<CSTNode, Error> {
-        let key = self.make_key("QualifiedPathInExpression");
-        match self.get_memo(&key) {
-            MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
-            MemoResult::None => self.write_memo(&key, None),
-        };
-
-        // TODO
-
-        // QualifiedPathType
-        self.qualified_path_type()?;
-
-        // (`::` PathExprSegment)+
-
-        Err(Error::E)
-    }
-
-    // QualifiedPathType ::= `<` Type (`as` TypePath)? `>`
-    fn qualified_path_type(&mut self) -> Result<CSTParser, Error> {
-        Err(Error::E)
-    }
-
-    // QualifiedPathInType ::= QualifiedPathType (`::` TypePathSegment)+
-    fn qualified_path_in_type(&mut self) -> Result<CSTParser, Error> {
-        self.qualified_path_type()?;
-
+    //
+    fn qualified_path_in_expression(&mut self) -> Result<ASTNode, Error> {
         Err(Error::E)
     }
 
     // Pratt parsing
     // OperatorExpression
-    fn operator_expression(&mut self) -> Result<CSTNode, Error> {
+    fn operator_expression(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("OperatorExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -924,7 +826,7 @@ impl CSTParser {
         let min_bp = self.min_bp;
 
         // 前置演算子
-        let mut lhs: CSTNode = match self.lexer.peek() {
+        let mut lhs: ASTNode = match self.lexer.peek() {
             Token::LeftParenthesis(LeftParenthesis::Parenthesis) => {
                 self.min_bp = 0;
                 let mut node = self.make_factor();
@@ -975,7 +877,7 @@ impl CSTParser {
                 }
                 self.lexer.next_glue();
 
-                let mut node = CSTNode::new(CSTNodeKind::Factor {
+                let mut node = ASTNode::new(ASTNodeKind::Factor {
                     token: op,
                     row: op_pos.0,
                     column: op_pos.1,
@@ -995,7 +897,7 @@ impl CSTParser {
 
                 self.min_bp = right_bp; // 次の再帰のために保存
                 let rhs = self.operator_expression()?;
-                let mut node = CSTNode::new(CSTNodeKind::Factor {
+                let mut node = ASTNode::new(ASTNodeKind::Factor {
                     token: op,
                     row: op_pos.0,
                     column: op_pos.1,
@@ -1019,7 +921,7 @@ impl CSTParser {
     //                    | (`&`|`&&`) `mut` Expression
     //                    | (`&`|`&&`) `raw` `const` Expression
     //                    | (`&`|`&&`) `raw` `mut` Expression
-    fn borrow_expression(&mut self) -> Result<CSTNode, Error> {
+    fn borrow_expression(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("BrrowExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1045,12 +947,12 @@ impl CSTParser {
         self.expression()
     }
 
-    fn dereference_expression(&mut self) -> Result<CSTNode, Error> {
+    fn dereference_expression(&mut self) -> Result<ASTNode, Error> {
         self.expression()
     }
 
     // GroupedExpression ::= `(` Expression `)`
-    fn grouped_expression(&mut self) -> Result<CSTNode, Error> {
+    fn grouped_expression(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("GroupedExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1079,7 +981,7 @@ impl CSTParser {
             return Err(Error::NotExpected);
         }
 
-        Ok(CSTNode::new(CSTNodeKind::GroupedExpression {
+        Ok(ASTNode::new(ASTNodeKind::GroupedExpression {
             left_parenthesis,
             expression,
             right_parenthesis,
@@ -1087,7 +989,7 @@ impl CSTParser {
     }
 
     // StructExpression ::= StructExprStruct | StructExprTuple | StructExprUnit
-    fn struct_expression(&mut self) -> Result<CSTNode, Error> {
+    fn struct_expression(&mut self) -> Result<ASTNode, Error> {
         Err(Error::E)
     }
 
@@ -1104,7 +1006,7 @@ impl CSTParser {
     // StructExprUnit   ::= PathInExpression
 
     // CallExpression ::= Expression `(` CallParams? `)`
-    fn call_expression(&mut self) -> Result<CSTNode, Error> {
+    fn call_expression(&mut self) -> Result<ASTNode, Error> {
         // Expression
         let expression = Box::new(self.expression()?);
 
@@ -1134,7 +1036,7 @@ impl CSTParser {
         let right_parenthesis = Box::new(self.make_factor());
         self.lexer.next();
 
-        Ok(CSTNode::new(CSTNodeKind::CallExpression {
+        Ok(ASTNode::new(ASTNodeKind::CallExpression {
             expression,
             left_parenthesis,
             call_params,
@@ -1143,11 +1045,11 @@ impl CSTParser {
     }
 
     // CallParams     ::= Expression ( `,` Expression )* `,`?
-    fn call_params(&mut self) -> Result<CSTNode, Error> {
+    fn call_params(&mut self) -> Result<ASTNode, Error> {
         let expression = Box::new(self.expression()?);
 
         // ( `,` Expression )*
-        let mut comma_and_expression = Vec::<(CSTNode, CSTNode)>::new();
+        let mut comma_and_expression = Vec::<(ASTNode, ASTNode)>::new();
         loop {
             if !matches!(self.lexer.peek(), Token::Comma) {
                 break;
@@ -1168,7 +1070,7 @@ impl CSTParser {
             None
         };
 
-        Ok(CSTNode::new(CSTNodeKind::CallParams {
+        Ok(ASTNode::new(ASTNodeKind::CallParams {
             expression,
             comma_and_expression,
             comma,
@@ -1176,7 +1078,7 @@ impl CSTParser {
     }
 
     // MethodCallExpression ::= Expression `.` PathExprSegment `(` CallParams? `)`
-    fn method_call_expression(&mut self) -> Result<CSTNode, Error> {
+    fn method_call_expression(&mut self) -> Result<ASTNode, Error> {
         self.expression()?;
 
         self.call_params();
@@ -1185,7 +1087,7 @@ impl CSTParser {
     }
 
     // ReturnExpression ::= return Expression?
-    fn return_expression(&mut self) -> Result<CSTNode, Error> {
+    fn return_expression(&mut self) -> Result<ASTNode, Error> {
         // `return`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Return)) {
             return Err(Error::E);
@@ -1199,14 +1101,14 @@ impl CSTParser {
             expression = Some(Box::new(expr));
         }
 
-        Ok(CSTNode::new(CSTNodeKind::ReturnExpression {
+        Ok(ASTNode::new(ASTNodeKind::ReturnExpression {
             return_keyword,
             expression,
         }))
     }
 
     //IfExpression ::= `if` Expression BlockExpression (`else` ( BlockExpression | IfExpression | IfLetExpression ) )?
-    fn if_expression(&mut self) -> Result<CSTNode, Error> {
+    fn if_expression(&mut self) -> Result<ASTNode, Error> {
         // `if`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::If)) {
             return Err(Error::E);
@@ -1222,7 +1124,7 @@ impl CSTParser {
 
         // `else`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Else)) {
-            return Ok(CSTNode::new(CSTNodeKind::Item));
+            return Ok(ASTNode::new(ASTNodeKind::Item));
         }
         let else_keyword = self.make_factor();
 
@@ -1238,12 +1140,12 @@ impl CSTParser {
 
     // IfLetExpression ::= `if` `let` Pattern `=` Scrutinee BlockExpression
     //                   ( else ( BlockExpression | IfExpression | IfLetExpression ) )?
-    fn if_let_expression(&mut self) -> Result<CSTNode, Error> {
+    fn if_let_expression(&mut self) -> Result<ASTNode, Error> {
         Err(Error::E)
     }
 
     // MatchExpression ::= `match` Scrutinee `{` InnerAttribute* MatchArms? `}`
-    fn match_expression(&mut self) -> Result<CSTNode, Error> {
+    fn match_expression(&mut self) -> Result<ASTNode, Error> {
         // `match`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Match)) {
             return Err(Error::E);
@@ -1280,7 +1182,7 @@ impl CSTParser {
         Err(Error::E)
     }
 
-    fn scrutinee(&mut self) -> Result<CSTNode, Error> {
+    fn scrutinee(&mut self) -> Result<ASTNode, Error> {
         let Ok(expression) = self.expression() else {
             return Err(Error::E);
         };
@@ -1293,7 +1195,7 @@ impl CSTParser {
     //                          BlockExpression | ConstBlockExpression | UnsafeBlockExpression | LoopExpression
     //                        | IfExpression | IfLetExpression | MatchExpression
     //                        )
-    fn expression_with_block(&mut self) -> Result<CSTNode, Error> {
+    fn expression_with_block(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("ExpressionWithBlock");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1328,7 +1230,7 @@ impl CSTParser {
     }
 
     // BlockExpression ::=  `{` InnerAttribute* Statements? `}`
-    fn block_expression(&mut self) -> Result<CSTNode, Error> {
+    fn block_expression(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("BlockExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1359,7 +1261,7 @@ impl CSTParser {
             return Err(Error::NotExpected);
         }
 
-        let expr = CSTNode::new(CSTNodeKind::BlockExpression {
+        let expr = ASTNode::new(ASTNodeKind::BlockExpression {
             left_brace,
             inner_attribute: Vec::new(),
             statements,
@@ -1371,7 +1273,7 @@ impl CSTParser {
     }
 
     // Statements ::= Statement+ | Statement+ ExpressionWithoutBlock | ExpressionWithoutBlock
-    fn statements(&mut self) -> Result<CSTNode, Error> {
+    fn statements(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("Statements");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1380,7 +1282,7 @@ impl CSTParser {
         };
 
         // Statement+ | Statement+ ExpressionWithoutBlock
-        let mut node = CSTNode::new(CSTNodeKind::Statements);
+        let mut node = ASTNode::new(ASTNodeKind::Statements);
         if let Ok(expr1) = self.statement() {
             node.children.push(expr1);
 
@@ -1413,7 +1315,7 @@ impl CSTParser {
     //
 
     // Statement ::= `;` | Item | LetStatement | ExpressionStatement | MacroInvocationSemi
-    fn statement(&mut self) -> Result<CSTNode, Error> {
+    fn statement(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("Statement");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1423,7 +1325,7 @@ impl CSTParser {
 
         // ;
         if matches!(self.lexer.next(), Token::Semicolon) {
-            let expr = CSTNode::new(CSTNodeKind::Statement {
+            let expr = ASTNode::new(ASTNodeKind::Statement {
                 statement: Box::new(self.make_factor()),
             });
             self.write_memo(&key, Some(&expr));
@@ -1432,17 +1334,11 @@ impl CSTParser {
         self.backtrack(&key);
 
         // Item
-        if let Ok(expr) = self.item() {
-            self.write_memo(&key, Some(&expr));
-            return Ok(CSTNode::new(CSTNodeKind::Statement {
-                statement: Box::new(expr),
-            }));
-        }
 
         // LetStatement
         if let Ok(expr) = self.let_statement() {
             self.write_memo(&key, Some(&expr));
-            return Ok(CSTNode::new(CSTNodeKind::Statement {
+            return Ok(ASTNode::new(ASTNodeKind::Statement {
                 statement: Box::new(expr),
             }));
         }
@@ -1451,7 +1347,7 @@ impl CSTParser {
         // ExpressionStatement
         if let Ok(expr) = self.expression_statement() {
             self.write_memo(&key, Some(&expr));
-            return Ok(CSTNode::new(CSTNodeKind::Statement {
+            return Ok(ASTNode::new(ASTNodeKind::Statement {
                 statement: Box::new(expr),
             }));
         }
@@ -1465,7 +1361,7 @@ impl CSTParser {
     // LetStatement ::= OuterAttribute* (`ur` | `sr` | `nr` | `let`)
     //                  PatternNoTopAlt ( `:` Type )?
     //                  (`=` Expression ( `else` BlockExpression)? )? `;`
-    fn let_statement(&mut self) -> Result<CSTNode, Error> {
+    fn let_statement(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("LetStatement");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1536,7 +1432,7 @@ impl CSTParser {
             return Err(Error::E);
         }
 
-        let expr = CSTNode::new(CSTNodeKind::LetStatement {
+        let expr = ASTNode::new(ASTNodeKind::LetStatement {
             outer_attribute: Vec::new(),
             rarity,
             pattern_no_top_alt,
@@ -1554,7 +1450,7 @@ impl CSTParser {
     }
 
     // ExpressionStatement ::= ExpressionWithoutBlock `;` | ExpressionWithBlock `;`?
-    fn expression_statement(&mut self) -> Result<CSTNode, Error> {
+    fn expression_statement(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("ExpressionStatement");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1587,12 +1483,13 @@ impl CSTParser {
     //
 
     // Pattern ::= `|`? PatternNoTopAlt ( `|` PatternNoTopAlt )*
-    fn pattern(&mut self) -> Result<CSTNode, Error> {
+    fn pattern(&mut self) -> Result<ASTNode, Error> {
         let mut or_token = None;
 
         // `|`?
         if let Token::Or = self.lexer.peek() {
-            or_token = Some(Box::new(self.make_factor_and_next()));
+            or_token = Some(Box::new(self.make_factor()));
+            self.lexer.next();
         }
 
         self.pattern_no_top_alt()?;
@@ -1605,7 +1502,7 @@ impl CSTParser {
     }
 
     // PatternNoTopAlt ::= PatternWithoutRange | RangePattern
-    fn pattern_no_top_alt(&mut self) -> Result<CSTNode, Error> {
+    fn pattern_no_top_alt(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("PatternNoTopAlt");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1625,7 +1522,7 @@ impl CSTParser {
     // PatternWithoutRange ::= LiteralPattern | IdentifierPattern | WildcardPattern | RestPattern |
     //                         ReferencePattern | StructPattern | TupleStructPattern | TuplePattern | GroupedPattern |
     //                         SlicePattern | PathPattern | MacroInvocation
-    fn pattern_without_range(&mut self) -> Result<CSTNode, Error> {
+    fn pattern_without_range(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("PatternWithoutRange");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1682,7 +1579,7 @@ impl CSTParser {
     //                  | RAW_C_STRING_LITERAL
     //                  | `-`? INTEGER_LITERAL
     //                  | `-`? FLOAT_LITERAL
-    fn literal_pattern(&mut self) -> Result<CSTNode, Error> {
+    fn literal_pattern(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("LiteralPattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1693,7 +1590,7 @@ impl CSTParser {
         match self.lexer.next() {
             Token::Keyword(keyword) => match keyword {
                 Keyword::True => {
-                    let node = CSTNode::new(CSTNodeKind::LiteralPattern {
+                    let node = ASTNode::new(ASTNodeKind::LiteralPattern {
                         literal: Literal::new(LiteralKind::Bool(true), ""),
                     });
                     self.write_memo(&key, Some(&node));
@@ -1701,7 +1598,7 @@ impl CSTParser {
                 }
 
                 Keyword::False => {
-                    let node = CSTNode::new(CSTNodeKind::LiteralPattern {
+                    let node = ASTNode::new(ASTNodeKind::LiteralPattern {
                         literal: Literal::new(LiteralKind::Bool(false), ""),
                     });
                     self.write_memo(&key, Some(&node));
@@ -1710,7 +1607,7 @@ impl CSTParser {
                 _ => Err(Error::NotExpected),
             },
             Token::Literal(literal) => {
-                let node = CSTNode::new(CSTNodeKind::LiteralPattern { literal });
+                let node = ASTNode::new(ASTNodeKind::LiteralPattern { literal });
                 self.write_memo(&key, Some(&node));
                 Ok(node)
             }
@@ -1722,7 +1619,7 @@ impl CSTParser {
 
                 match literal.literal_kind {
                     LiteralKind::Integer | LiteralKind::Float => {
-                        let node = CSTNode::new(CSTNodeKind::LiteralPattern { literal });
+                        let node = ASTNode::new(ASTNodeKind::LiteralPattern { literal });
                         self.write_memo(&key, Some(&node));
                         Ok(node)
                     }
@@ -1735,7 +1632,7 @@ impl CSTParser {
     }
 
     // IdentifierPattern ::= `ref`? `mut`? Identifier (`@` PatternNoTopAlt )?
-    fn identifier_pattern(&mut self) -> Result<CSTNode, Error> {
+    fn identifier_pattern(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("IdentifierPattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1778,7 +1675,7 @@ impl CSTParser {
             pattern_no_top_alt = Some(Box::new(self.pattern_no_top_alt()?));
         }
 
-        let node = CSTNode::new(CSTNodeKind::IdentifierPattern {
+        let node = ASTNode::new(ASTNodeKind::IdentifierPattern {
             ref_keyword,
             mut_keyword,
             identifier,
@@ -1791,7 +1688,7 @@ impl CSTParser {
     }
 
     // WildcardPattern ::= `_`
-    fn wildcard_pattern(&mut self) -> Result<CSTNode, Error> {
+    fn wildcard_pattern(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("WildcardPattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1810,7 +1707,7 @@ impl CSTParser {
     }
 
     // RestPattern ::= `..`
-    fn rest_pattern(&mut self) -> Result<CSTNode, Error> {
+    fn rest_pattern(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("RestPattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1829,7 +1726,7 @@ impl CSTParser {
     }
 
     // ReferencePattern ::= (`&`|`&&`) mut? PatternWithoutRange
-    fn reference_pattern(&mut self) -> Result<CSTNode, Error> {
+    fn reference_pattern(&mut self) -> Result<ASTNode, Error> {
         let key = self.make_key("ReferencePattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
@@ -1855,20 +1752,10 @@ impl CSTParser {
     //
     //
 
-    fn make_factor(&self) -> CSTNode {
+    fn make_factor(&self) -> ASTNode {
         let pos = self.lexer.get_sorce_position();
         let token = self.lexer.peek();
-        CSTNode::new(CSTNodeKind::Factor {
-            token,
-            row: pos.0,
-            column: pos.1,
-        })
-    }
-
-    fn make_factor_and_next(&mut self) -> CSTNode {
-        let pos = self.lexer.get_sorce_position();
-        let token = self.lexer.next();
-        CSTNode::new(CSTNodeKind::Factor {
+        ASTNode::new(ASTNodeKind::Factor {
             token,
             row: pos.0,
             column: pos.1,
@@ -1882,7 +1769,7 @@ impl CSTParser {
         }
     }
 
-    fn write_memo(&mut self, key: &ParseMemoKey, node: Option<&CSTNode>) {
+    fn write_memo(&mut self, key: &ParseMemoKey, node: Option<&ASTNode>) {
         let mut file = OpenOptions::new().append(true).open("log.txt").unwrap();
         if let Err(e) = writeln!(
             file,
@@ -1898,7 +1785,7 @@ impl CSTParser {
         self.memo.insert(key.clone(), node.cloned());
     }
 
-    fn get_memo(&self, key: &ParseMemoKey) -> MemoResult<CSTNode> {
+    fn get_memo(&self, key: &ParseMemoKey) -> MemoResult<ASTNode> {
         let Some(node) = self.memo.get(&key) else {
             return MemoResult::None;
         };
@@ -1923,6 +1810,12 @@ impl CSTParser {
         }
 
         self.lexer.set_postion(key.position);
+    }
+
+    fn err(&mut self, error_type: Error) -> Result<(), Error> {
+        // backtrack
+
+        Err(error_type)
     }
 
     pub fn error(&self, error_type: Error) {

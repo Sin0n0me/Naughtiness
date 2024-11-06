@@ -1,4 +1,4 @@
-use nagi_cst::token::*;
+use nagi_syntax_tree::token::*;
 
 pub fn prefix_binding_power(op: &Token) -> Option<((), u16)> {
     let res = match op {
