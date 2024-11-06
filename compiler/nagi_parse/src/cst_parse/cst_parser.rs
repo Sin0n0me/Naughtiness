@@ -1,11 +1,14 @@
 use crate::cst_parse::expression::*;
-use crate::cst_parse::lexer::Lexer;
+use crate::lexer::Lexer;
 
 use nagi_cst::cst::*;
 use nagi_cst::keywords::Keyword;
 use nagi_cst::token::*;
 
 use std::collections::HashMap;
+
+use std::fs::OpenOptions;
+use std::io::{BufWriter, Write};
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 struct ParseMemoKey {
@@ -49,9 +52,480 @@ impl CSTParser {
 
     pub fn parse(&mut self) -> Result<CSTNode, Error> {
         let mut node = self.expression()?;
+        Ok(node)
+    }
+
+    //
+    // Attributes
+    //
+
+    // InnerAttribute ::= `#` `!` `[` Attribute `]`
+    fn inner_attribute(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("InnerAttribute");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        // `#`
+        let pound = Box::new(self.make_factor());
+        if matches!(self.lexer.next(), Token::Pound) {
+            return Err(Error::NotExpected);
+        }
+
+        // `!`
+        let exclamation = Box::new(self.make_factor());
+        if matches!(self.lexer.next(), Token::Not) {
+            return Err(Error::NotExpected);
+        }
+
+        // `[`
+        let left_brackets = Box::new(self.make_factor());
+        if matches!(
+            self.lexer.next(),
+            Token::LeftParenthesis(LeftParenthesis::Brackets)
+        ) {
+            return Err(Error::NotExpected);
+        }
+
+        let attribute = Box::new(self.attribute()?);
+
+        // `]`
+        let right_brackets = Box::new(self.make_factor());
+        if matches!(
+            self.lexer.next(),
+            Token::RightParenthesis(RightParenthesis::Brackets)
+        ) {
+            return Err(Error::NotExpected);
+        }
+
+        let node = CSTNode::new(CSTNodeKind::InnerAttribute {
+            pound,
+            exclamation,
+            left_brackets,
+            attribute,
+            right_brackets,
+        });
+        self.write_memo(&key, Some(&node));
 
         Ok(node)
     }
+
+    // OuterAttribute ::= `#` `[` Attribute `]`
+    fn outer_attribute(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("OuterAttribute");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        // `#`
+        if !matches!(self.lexer.peek(), Token::Pound) {
+            return Err(Error::NotExpected);
+        }
+        let pound = Box::new(self.make_factor());
+        self.lexer.next();
+
+        // `[`
+        let left_brackets = Box::new(self.make_factor());
+        if !matches!(
+            self.lexer.next(),
+            Token::LeftParenthesis(LeftParenthesis::Brackets)
+        ) {
+            return Err(Error::NotExpected);
+        }
+
+        let attribute = Box::new(self.attribute()?);
+
+        // `]`
+        let right_brackets = Box::new(self.make_factor());
+        if !matches!(
+            self.lexer.next(),
+            Token::RightParenthesis(RightParenthesis::Brackets)
+        ) {
+            return Err(Error::NotExpected);
+        }
+
+        let node = CSTNode::new(CSTNodeKind::OuterAttribute {
+            pound,
+            left_brackets,
+            attribute,
+            right_brackets,
+        });
+        self.write_memo(&key, Some(&node));
+
+        Ok(node)
+    }
+
+    // Attribute ::= SimplePath AttributeInput?  | `unsafe` `(` SimplePath AttributeInput? `)`
+    fn attribute(&mut self) -> Result<CSTNode, Error> {
+        Err(Error::E)
+    }
+
+    // AttributeInput ::= DelimTokenTree | `=` Expression
+    fn attribute_input(&mut self) -> Result<CSTNode, Error> {
+        Err(Error::E)
+    }
+
+    // Visibility ::= `pub`
+    //              | `pub` `(` `crate` `)`
+    //              | `pub` `(` `self` `)`
+    //              | `pub` `(` `super` `)`
+    //              | `pub` `(` `in` SimplePath `)`
+    fn visibility(&mut self) -> Result<CSTNode, Error> {
+        // `pub`
+        let mut pub_keyword = CSTNode::new(CSTNodeKind::Visibility {
+            pub_keyword: Box::new(self.make_factor()),
+        });
+        if matches!(self.lexer.next(), Token::Keyword(Keyword::Pub)) {
+            return Err(Error::NotExpected);
+        }
+
+        if matches!(
+            self.lexer.peek(),
+            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+        ) {
+            return Ok(pub_keyword);
+        }
+
+        Ok(pub_keyword)
+    }
+
+    // Item ::= OuterAttribute* VisItem | MacroItem
+    fn item(&mut self) -> Result<CSTNode, Error> {
+        self.outer_attribute();
+
+        self.vis_item()
+    }
+
+    // VisItem ::= Visibility?
+    //           (
+    //             Module
+    fn vis_item(&mut self) -> Result<CSTNode, Error> {
+        self.visibility();
+
+        self.function()?;
+
+        Err(Error::E)
+    }
+
+    // Functions
+
+    // Function ::= FunctionQualifiers `fn` Identifier GenericParams?
+    //             `(` FunctionParameters? `)`
+    //             FunctionReturnType? WhereClause?
+    //             ( BlockExpression | `;` )
+    fn function(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("Function");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        // FunctionQualifiers
+        let function_qualifiers = self.function_qualifiers()?;
+
+        // `fn`
+        let fn_keyword = Box::new(self.make_factor());
+        if !matches!(self.lexer.next(), Token::Keyword(Keyword::Fn)) {
+            return Err(Error::E);
+        }
+
+        // Identifier
+        if !matches!(self.lexer.next(), Token::Identifier(_)) {
+            return Err(Error::E);
+        }
+
+        // GenericParams?
+        if let Ok(expr) = self.generic_params() {
+            // TODO
+        }
+
+        // `(`
+        let left_parenthesis = Box::new(self.make_factor());
+        if !matches!(
+            self.lexer.next(),
+            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+        ) {
+            return Err(Error::NotExpected);
+        }
+
+        // FunctionParameters?
+        let mut call_params = None;
+        if let Ok(res) = self.call_params() {
+            call_params = Some(Box::new(res));
+        }
+
+        // `)`
+        if !matches!(
+            self.lexer.peek(),
+            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+        ) {
+            return Err(Error::NotExpected);
+        }
+
+        // FunctionReturnType?
+        if let Ok(expr) = self.function_return_type() {
+            // TODO
+        }
+
+        // WhereClause?
+        // TODO
+
+        // ( BlockExpression | `;` )
+        if let Ok(expr) = self.block_expression() {}
+
+        if let Token::Semicolon = self.lexer.peek() {}
+
+        Err(Error::E)
+    }
+
+    // FunctionQualifiers ::= `const`? `async`? ItemSafety? (`extern` Abi?)?
+    fn function_qualifiers(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("FunctionQualifiers");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        let mut const_keyword = None;
+        let mut async_keyword = None;
+        let mut item_safety = None;
+        let mut extern_keyword = None;
+        let mut abi = None;
+
+        // `const`?
+        if matches!(self.lexer.peek(), Token::Keyword(Keyword::Const)) {
+            const_keyword = Some(Box::new(self.make_factor()));
+            self.lexer.next();
+        }
+
+        // `async`?
+        if matches!(self.lexer.peek(), Token::Keyword(Keyword::Async)) {
+            async_keyword = Some(Box::new(self.make_factor()));
+            self.lexer.next();
+        }
+
+        // ItemSafety?
+        if let Ok(expr) = self.item_safety() {
+            item_safety = Some(Box::new(expr));
+            self.lexer.next();
+        }
+
+        // (`extern` `Abi`?)?
+        if matches!(self.lexer.peek(), Token::Keyword(Keyword::Extern)) {
+            extern_keyword = Some(Box::new(self.make_factor()));
+            self.lexer.next();
+
+            if let Ok(expr) = self.abi() {
+                abi = Some(Box::new(expr));
+                self.lexer.next();
+            }
+        }
+
+        Err(Error::E)
+    }
+
+    // ItemSafety ::= `safe` | `unsafe`
+    fn item_safety(&mut self) -> Result<CSTNode, Error> {
+        match self.lexer.peek() {
+            Token::Keyword(Keyword::Unsafe) => {
+                self.lexer.next();
+                Ok(self.make_factor())
+            }
+            Token::Identifier(identifier) => {
+                if identifier != "safe" {
+                    return Err(Error::NotExpected);
+                }
+                self.lexer.next();
+
+                Ok(self.make_factor())
+            }
+            _ => Err(Error::NotExpected),
+        }
+    }
+
+    // Abi ::= STRING_LITERAL | RAW_STRING_LITERAL
+    fn abi(&mut self) -> Result<CSTNode, Error> {
+        match self.lexer.peek() {
+            Token::Literal(literal) => {
+                if !matches!(literal.literal_kind, LiteralKind::Str | LiteralKind::StrRaw) {
+                    return Err(Error::NotExpected);
+                }
+
+                self.lexer.next();
+                Ok(self.make_factor())
+            }
+            _ => Err(Error::NotExpected),
+        }
+    }
+
+    // GenericParams
+    fn generic_params(&mut self) -> Result<CSTNode, Error> {
+        Err(Error::E)
+    }
+
+    // FunctionParameters ::= SelfParam `,`? | (SelfParam `,`)? FunctionParam (`,` FunctionParam)* `,`?
+    fn function_parameters(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("FunctionParameters");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        // SelfParam
+        self.self_param();
+
+        //
+        if matches!(self.lexer.peek(), Token::Comma) {
+            // TODO
+        }
+
+        // FunctionParam
+        self.function_param()?;
+
+        // (`,` FunctionParam)*
+        while let Token::Comma = self.lexer.peek() {
+            self.function_param();
+        }
+
+        Err(Error::E)
+    }
+
+    // SelfParam ::= OuterAttribute* ( ShorthandSelf | TypedSelf )
+    fn self_param(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("Selfparam");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        // OuterAttribute*
+        self.outer_attribute();
+
+        // ShorthandSelf
+        if let Ok(expr) = self.shorthand_self() {
+            self.write_memo(&key, Some(&expr));
+            return Ok(expr);
+        }
+        self.backtrack(&key);
+
+        // TypedSelf
+
+        self.backtrack(&key);
+
+        Err(Error::E)
+    }
+
+    // ShorthandSelf ::= (`&` | `&` Lifetime)? `mut`? `self`
+    fn shorthand_self(&mut self) -> Result<CSTNode, Error> {
+        // (`&` | `&` Lifetime)?
+        if matches!(self.lexer.peek(), Token::And) {
+            // TODO
+        }
+
+        // `mut`?
+        if matches!(self.lexer.peek(), Token::Keyword(Keyword::Mut)) {
+            // TODO
+        }
+
+        // `self`
+        if !matches!(self.lexer.peek(), Token::Keyword(Keyword::SelfValue)) {
+            return Err(Error::E);
+        }
+
+        Err(Error::E)
+    }
+
+    // TypedSelf ::= `mut`? `self` `:` Type
+    fn typed_self(&mut self) -> Result<CSTNode, Error> {
+        let mut node = self.make_factor();
+
+        // `mut`?
+        if matches!(self.lexer.peek(), Token::Keyword(Keyword::Mut)) {
+            // TODO
+        }
+
+        // `self`
+        if !matches!(self.lexer.next(), Token::Keyword(Keyword::SelfValue)) {
+            return Err(Error::NotExpected);
+        }
+
+        // `:`
+        if !matches!(self.lexer.next(), Token::Colon) {
+            return Err(Error::NotExpected);
+        }
+
+        // Type
+        // TODO
+
+        Ok(node)
+    }
+
+    // FunctionParam ::= OuterAttribute* ( FunctionParamPattern | `...` | Type )
+    fn function_param(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("FunctionParam");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        // OuterAttribute*
+        self.outer_attribute();
+
+        // `...`
+        if let Token::DotDotDot = self.lexer.peek() {
+            self.lexer.next();
+            // TODO
+        }
+
+        // FunctionParamPattern
+        if let Ok(expr) = self.function_param_pattern() {
+            return Ok(expr);
+        }
+
+        // Type
+
+        Err(Error::E)
+    }
+
+    // FunctionParamPattern ::= PatternNoTopAlt `:` ( Type | `...` )
+    fn function_param_pattern(&mut self) -> Result<CSTNode, Error> {
+        // PatternNoTopAlt
+        self.pattern_no_top_alt()?;
+
+        // `:`
+        if !matches!(self.lexer.next(), Token::Colon) {
+            return Err(Error::E);
+        }
+
+        // ( Type | `...` )
+        match self.lexer.peek_glue() {
+            Token::DotDotDot => (),
+            _ => (),
+        };
+
+        // TODO
+        Err(Error::E)
+    }
+
+    // FunctionReturnType ::= `->` Type
+    fn function_return_type(&mut self) -> Result<CSTNode, Error> {
+        Err(Error::E)
+    }
+
+    // Structs
+
+    //
+    // Expressions
+    //
 
     // Expression ::= ExpressionWithoutBlock | ExpressionWithBlock
     fn expression(&mut self) -> Result<CSTNode, Error> {
@@ -77,10 +551,6 @@ impl CSTParser {
         Err(Error::E)
     }
 
-    fn outer_attribute(&mut self) -> Result<CSTNode, Error> {
-        Err(Error::E)
-    }
-
     // ExpressionWithoutBlock ::= OuterAttribute*
     //                           (
     //                                LiteralExpression | PathExpression | OperatorExpression | GroupedExpression | ArrayExpression
@@ -96,7 +566,11 @@ impl CSTParser {
             MemoResult::None => self.write_memo(&key, None),
         };
 
-        self.outer_attribute();
+        if let Ok(expr) = self.outer_attribute() {
+            // TODO
+        } else {
+            self.backtrack(&key);
+        }
 
         // OperatorExpression
         if let Ok(expr) = self.operator_expression() {
@@ -194,7 +668,149 @@ impl CSTParser {
         result
     }
 
+    // PathExpression ::= PathInExpression | QualifiedPathInExpression
     fn path_expression(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("PathExpression");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        // PathInExpression
+        if let Ok(expr) = self.path_in_expression() {
+            self.write_memo(&key, Some(&expr));
+            return Ok(expr);
+        }
+        self.backtrack(&key);
+
+        // QualifiedPathInExpression
+        if let Ok(expr) = self.qualified_path_in_expression() {
+            self.write_memo(&key, Some(&expr));
+            return Ok(expr);
+        }
+        self.backtrack(&key);
+
+        Err(Error::E)
+    }
+
+    // PathInExpression ::= `::`? PathExprSegment (`::` PathExprSegment)*
+    fn path_in_expression(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("PathInExpression");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        let mut path_separater = None;
+
+        //  `::`?
+        let glue_token = self.lexer.peek_glue();
+        if matches!(glue_token, Token::PathSeparater) {
+            let pos = self.lexer.get_sorce_position();
+            path_separater = Some(Box::new(CSTNode::new(CSTNodeKind::Factor {
+                token: glue_token,
+                row: pos.0,
+                column: pos.1,
+            })));
+            self.lexer.next_glue();
+        }
+
+        // PathExprSegment
+        let path_expr_segment = Box::new(self.path_expr_segment()?);
+
+        // (`::` PathExprSegment)*
+        let mut repeat_path_expr_segment = Vec::<(CSTNode, CSTNode)>::new();
+        loop {
+            // `::`
+            let pos = self.lexer.get_sorce_position();
+            if !matches!(self.lexer.peek_glue(), Token::PathSeparater) {
+                break;
+            }
+            self.lexer.next_glue();
+
+            // PathExprSegment
+            let Ok(expr) = self.path_expr_segment() else {
+                break;
+            };
+
+            repeat_path_expr_segment.push((
+                CSTNode::new(CSTNodeKind::Factor {
+                    token: Token::PathSeparater,
+                    row: pos.0,
+                    column: pos.1,
+                }),
+                expr,
+            ));
+        }
+
+        let node = CSTNode::new(CSTNodeKind::PathInExpression {
+            path_separater,
+            path_expr_segment,
+            repeat_path_expr_segment,
+        });
+        self.write_memo(&key, Some(&node));
+
+        Ok(node)
+    }
+
+    // PathExprSegment ::= PathIdentSegment (`::` GenericArgs)?
+    fn path_expr_segment(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("PathExprSegment");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        // PathIdentSegment
+        let path_ident_segment = Box::new(self.path_ident_segment()?);
+
+        //  (`::` GenericArgs)?
+        let mut generic_args = None;
+        if matches!(self.lexer.peek_glue(), Token::PathSeparater) {
+
+            // GenericArgs
+        }
+
+        Ok(CSTNode::new(CSTNodeKind::PathExprSegment {
+            path_ident_segment,
+            generic_args,
+        }))
+    }
+
+    // PathIdentSegment   ::= Identifier | `super` | `self` | `Self` | `crate` | `$crate`
+    fn path_ident_segment(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("PathIdentSegment");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        let node = self.make_factor();
+        match self.lexer.peek() {
+            Token::Identifier(_) => {
+                self.lexer.next();
+                self.write_memo(&key, Some(&node));
+                Ok(node)
+            }
+            Token::Keyword(keyword) => match keyword {
+                Keyword::Super | Keyword::SelfValue | Keyword::SelfType | Keyword::Crate => {
+                    self.lexer.next();
+                    self.write_memo(&key, Some(&node));
+                    Ok(node)
+                }
+                _ => Err(Error::E),
+            },
+
+            _ => Err(Error::E),
+        }
+    }
+
+    //
+    fn qualified_path_in_expression(&mut self) -> Result<CSTNode, Error> {
         Err(Error::E)
     }
 
@@ -248,7 +864,6 @@ impl CSTParser {
         loop {
             let op_pos = self.lexer.get_sorce_position();
             let op = self.lexer.peek_glue();
-            println!("op -----> {:?}", op);
 
             match &op {
                 Token::Eof => break,
@@ -1156,21 +1771,17 @@ impl CSTParser {
     }
 
     fn write_memo(&mut self, key: &ParseMemoKey, node: Option<&CSTNode>) {
-        if node.is_some() {
-            println!(
-                "created: {} rule: {} next: {:?}",
-                key.position,
-                key.rule,
-                self.lexer.peek()
-            );
-        } else {
-            println!(
-                "write: {} rule: {} token: {:?}",
-                key.position,
-                key.rule,
-                self.lexer.peek()
-            );
+        let mut file = OpenOptions::new().append(true).open("log.txt").unwrap();
+        if let Err(e) = writeln!(
+            file,
+            "{} -> {} -> {:?}",
+            key.rule,
+            key.position,
+            self.lexer.peek()
+        ) {
+            eprintln!("Couldn't write to file: {}", e);
         }
+
         self.last_write_memo = key.clone();
         self.memo.insert(key.clone(), node.cloned());
     }
@@ -1181,11 +1792,6 @@ impl CSTParser {
         };
 
         let Some(value) = node.clone() else {
-            println!(
-                "recursed! {} rule: {}",
-                self.lexer.get_token_position(),
-                key.rule
-            );
             return MemoResult::Recursive;
         };
 
@@ -1193,12 +1799,17 @@ impl CSTParser {
     }
 
     fn backtrack(&mut self, key: &ParseMemoKey) {
-        println!(
-            "backtrack : {} {} token: {:?}",
-            self.lexer.get_token_position(),
+        let mut file = OpenOptions::new().append(true).open("log.txt").unwrap();
+        if let Err(e) = writeln!(
+            file,
+            "{} <- {} <- {:?}",
             key.rule,
+            key.position,
             self.lexer.peek()
-        );
+        ) {
+            eprintln!("Couldn't write to file: {}", e);
+        }
+
         self.lexer.set_postion(key.position);
     }
 
