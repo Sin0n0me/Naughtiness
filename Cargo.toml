@@ -1,4 +1,4 @@
 [workspace]
 members = [
     "compiler/nagi"
-, "compiler/nagi_checker", "compiler/nagi_extender", "compiler/nagi_macros", "compiler/nagi_syntax_tree"]
+, "compiler/nagi_checker", "compiler/nagi_command_option", "compiler/nagi_extender", "compiler/nagi_ir", "compiler/nagi_macros", "compiler/nagi_syntax_tree"]
