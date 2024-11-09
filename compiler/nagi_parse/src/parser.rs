@@ -1,0 +1,18 @@
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub struct ParseMemoKey {
+    pub position: usize,
+    pub rule: String,
+}
+
+pub enum MemoResult<T> {
+    None,
+    Recursive,
+    Some(T),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Error {
+    E,
+    Recursive,
+    NotExpected, // 期待したトークンではなかった
+}

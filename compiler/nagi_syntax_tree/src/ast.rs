@@ -32,4 +32,6 @@ impl ASTNode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ASTNodeKind {
     Factor { token: Token },
+
+    InnerAttribute { attribute: Box<ASTNode> },
 }

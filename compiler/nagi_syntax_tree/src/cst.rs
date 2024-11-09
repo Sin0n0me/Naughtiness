@@ -3,17 +3,17 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::prelude::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CSTNode {
     pub node_kind: CSTNodeKind,
     pub children: Vec<CSTNode>,
 }
 
 impl CSTNode {
-    pub fn new(node_kind: CSTNodeKind) -> Self {
+    pub fn new(node_kind: CSTNodeKind, children: Vec<CSTNode>) -> Self {
         Self {
             node_kind,
-            children: Vec::new(),
+            children,
         }
     }
 
@@ -29,7 +29,7 @@ impl CSTNode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CSTNodeKind {
     Factor {
         token: Token,
@@ -75,6 +75,23 @@ pub enum CSTNodeKind {
     // Item ::= OuterAttribute* VisItem | MacroItem
     Item,
 
+    // Function ::= FunctionQualifiers `fn` Identifier GenericParams?
+    //             `(` FunctionParameters? `)`
+    //             FunctionReturnType? WhereClause?
+    //             ( BlockExpression | `;` )
+    Function {
+        function_qualifiers: Box<CSTNode>,
+        fn_keyword: Box<CSTNode>,
+        identifier: Box<CSTNode>,
+        generic_params: Option<Box<CSTNode>>,
+        left_parenthesis: Box<CSTNode>,
+        function_parameters: Option<Box<CSTNode>>,
+        right_parenthesis: Box<CSTNode>,
+        function_return_type: Option<Box<CSTNode>>,
+        where_clause: Option<Box<CSTNode>>,
+        block_expression_or_semicolon: Box<CSTNode>,
+    },
+
     // FunctionQualifiers ::= `const`? `async`? ItemSafety? (`extern` Abi?)?
     FunctionQualifiers {
         const_keyword: Option<Box<CSTNode>>,
@@ -82,6 +99,20 @@ pub enum CSTNodeKind {
         item_safety: Option<Box<CSTNode>>,
         extern_keyword: Option<Box<CSTNode>>,
         abi: Option<Box<CSTNode>>,
+    },
+
+    // FunctionParameters ::= SelfParam `,`?
+    FunctionParam1 {
+        self_param: Box<CSTNode>,
+        comma: Option<Box<CSTNode>>,
+    },
+
+    // FunctionParameters ::= (SelfParam `,`)? FunctionParam (`,` FunctionParam)* `,`?
+    FunctionParam2 {
+        self_param: Option<(Box<CSTNode>, Box<CSTNode>)>,
+        function_param: Box<CSTNode>,
+        function_param_repeat: Vec<(CSTNode, CSTNode)>,
+        comma: Option<Box<CSTNode>>,
     },
 
     // Expression ::= ExpressionWithoutBlock | ExpressionWithBlock
@@ -98,8 +129,8 @@ pub enum CSTNodeKind {
     //                            | BreakExpression | RangeExpression | ReturnExpression | UnderscoreExpression | MacroInvocation
     //                            )
     ExpressionWithoutBlock {
-        outer_attribute: Option<Vec<CSTNode>>,
-        expression_without_block: Box<CSTNode>,
+        outer_attribute: Vec<CSTNode>,
+        expression: Box<CSTNode>,
     },
 
     // ExpressionWithoutBlock ::= OuterAttribute*
@@ -110,7 +141,7 @@ pub enum CSTNodeKind {
     //                              | ContinueExpression | BreakExpression | RangeExpression | ReturnExpression | UnderscoreExpression | MacroInvocation
     //                           )
     ExpressionWithBlock {
-        outer_attribute: Option<Vec<CSTNode>>,
+        outer_attribute: Vec<CSTNode>,
         expression_with_block: Box<CSTNode>,
     },
 
@@ -155,6 +186,45 @@ pub enum CSTNodeKind {
         right_parenthesis: Box<CSTNode>,
     },
 
+    // StructExpression ::= StructExprStruct | StructExprTuple | StructExprUnit
+    StructExpression {
+        expression: Box<CSTNode>,
+    },
+
+    // StructExprStruct ::= PathInExpression `{` (StructExprFields | StructBase)? `}`
+    StructExprStruct {
+        path_in_expression: Box<CSTNode>,
+        left_brace: Box<CSTNode>,
+        expression: Option<Box<CSTNode>>,
+        right_brace: Box<CSTNode>,
+    },
+
+    // StructExprFields
+    StructExprFields {
+        struct_expr_filed: Box<CSTNode>,
+        struct_expr_filed_repeat: Vec<(CSTNode, CSTNode)>,
+        comma: Option<Box<CSTNode>>,
+        struct_base: Option<Box<CSTNode>>,
+    },
+
+    // StructExprField  ::= OuterAttribute* ( Identifier | (Identifier |TUPLE_INDEX) `:` Expression )
+    StructExprField1 {
+        outer_attribute: Vec<CSTNode>,
+        identifier: Box<CSTNode>,
+    },
+    StructExprField2 {
+        outer_attribute: Vec<CSTNode>,
+        identifier_or_tuple: Box<CSTNode>,
+        colon: Box<CSTNode>,
+        expression: Box<CSTNode>,
+    },
+
+    // StructBase ::= `..` Expression
+    StructBase {
+        dotdot: Box<CSTNode>,
+        expression: Box<CSTNode>,
+    },
+
     //  CallExpression ::= Expression `(` CallParams? `)`
     CallExpression {
         expression: Box<CSTNode>,
@@ -174,6 +244,27 @@ pub enum CSTNodeKind {
     ReturnExpression {
         return_keyword: Box<CSTNode>,
         expression: Option<Box<CSTNode>>,
+    },
+
+    // IfExpression ::= `if` Expression BlockExpression (`else` ( BlockExpression | IfExpression | IfLetExpression ) )?
+    IfExpression {
+        if_keyword: Box<CSTNode>,
+        expression: Box<CSTNode>,
+        block_expression: Box<CSTNode>,
+        else_keyword: Option<Box<CSTNode>>,
+        else_expression: Option<Box<CSTNode>>,
+    },
+
+    // IfLetExpression ::= `if` `let` Pattern `=` Scrutinee BlockExpression (`else` ( BlockExpression | IfExpression | IfLetExpression ) )?
+    IfLetExpression {
+        if_keyword: Box<CSTNode>,
+        let_keyword: Box<CSTNode>,
+        pattern: Box<CSTNode>,
+        equal: Box<CSTNode>,
+        scrutinee: Box<CSTNode>,
+        block_expression: Box<CSTNode>,
+        else_keyword: Option<Box<CSTNode>>,
+        else_expression: Option<Box<CSTNode>>,
     },
 
     // Statements ::= Statement+ | Statement+ ExpressionWithoutBlock | ExpressionWithoutBlock

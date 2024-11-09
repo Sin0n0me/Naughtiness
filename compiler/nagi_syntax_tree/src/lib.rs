@@ -7,4 +7,5 @@ pub mod token;
 pub enum SyntaxTree {
     AST(ast::ASTNode),
     CST(cst::CSTNode),
+    HST(hst::HSTNode),
 }
