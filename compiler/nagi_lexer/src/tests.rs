@@ -1,6 +1,7 @@
 #[cfg(test)]
-mod token {
-    use crate::lexer::*;
+mod test {
+    use crate::lexer::Lexer;
+    use crate::{LiteralKind, Token, TokenKind};
 
     // 正常パターン
     fn check_equal(test_code: &str, token_kind: TokenKind) {
@@ -29,15 +30,15 @@ mod token {
 
     #[test]
     fn identifier_or_keyword() {
-        check_equal("hogFuga", TokenKind::Identifier);
-        check_equal("_hoge", TokenKind::Identifier);
-        check_equal("hoge123", TokenKind::Identifier);
-        check_equal("__hoge__", TokenKind::Identifier);
-        check_equal("_____", TokenKind::Identifier);
-        check_equal("こんにちは", TokenKind::Identifier);
+        check_equal("hogeFuga", TokenKind::Identifier("".to_string()));
+        check_equal("_hoge", TokenKind::Identifier("".to_string()));
+        check_equal("hoge123", TokenKind::Identifier("".to_string()));
+        check_equal("__hoge__", TokenKind::Identifier("".to_string()));
+        check_equal("_____", TokenKind::Identifier("".to_string()));
+        check_equal("こんにちは", TokenKind::Identifier("".to_string()));
 
-        check_not_equal("0123456789", TokenKind::Identifier);
-        check_not_equal("_", TokenKind::Identifier);
+        check_not_equal("0123456789", TokenKind::Identifier("".to_string()));
+        check_not_equal("_", TokenKind::Identifier("".to_string()));
     }
 
     #[test]
@@ -71,8 +72,9 @@ mod token {
         check_equal("0", TokenKind::Literal(LiteralKind::DecLiteral));
         check_equal("100u64", TokenKind::Literal(LiteralKind::DecLiteral));
 
+        check_equal("02468ACE", TokenKind::Literal(LiteralKind::DecLiteral)); // この時点では 10進数 + 有効なsuffix かは判定しない
+
         check_not_equal("_246", TokenKind::Literal(LiteralKind::DecLiteral));
-        //check_not_equal("02468ACE", TokenKind::Literal(LiteralKind::DecLiteral));
     }
     #[test]
     fn literal_hex() {
@@ -80,8 +82,9 @@ mod token {
         check_equal("0xFf00", TokenKind::Literal(LiteralKind::HexLiteral));
         check_equal("0x_0_F_", TokenKind::Literal(LiteralKind::HexLiteral));
 
+        check_equal("0xEF_GH", TokenKind::Literal(LiteralKind::HexLiteral)); // この時点では 16進数 + 有効なsuffix かは判定しない
+
         check_not_equal("0x", TokenKind::Literal(LiteralKind::HexLiteral));
-        //check_not_equal("0xEF_GH", TokenKind::Literal(LiteralKind::HexLiteral));
         check_not_equal("123ABC", TokenKind::Literal(LiteralKind::HexLiteral));
         check_not_equal("0XABC", TokenKind::Literal(LiteralKind::HexLiteral));
         check_not_equal("0x____", TokenKind::Literal(LiteralKind::HexLiteral));
