@@ -1,81 +1,10 @@
-use crate::identifier::*;
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct Token {
-    pub token_kind: TokenKind,
-    pub token: String,
-}
-
-impl Token {
-    pub fn new(token_kind: TokenKind, token: String) -> Self {
-        Self { token_kind, token }
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum TokenKind {
-    Unkown,
-    Identifier,
-    Prefix,
-    Literal(LiteralKind),
-    Comment,
-    WhiteSpace,
-
-    LeftParenthesis,  // (
-    RightParenthesis, // )
-    LeftBrackets,     // [
-    RightBrackets,    // ]
-    LeftBrace,        // {
-    RightBrace,       // }
-
-    Plus,        // +
-    Minus,       // -
-    Star,        // *
-    Slash,       // /
-    Percent,     // %
-    Equal,       // =
-    Caret,       // ^
-    Not,         // !
-    And,         // &
-    Or,          // |
-    GreaterThan, //  >
-    LessThan,    // <
-    At,          // @
-    Dot,         // .
-    Comma,       // ,
-    Colon,       // :
-    Semicolon,   // ;
-    Underscore,  // _
-    Pound,       // #
-    Dollar,      // $
-    Question,    // ?
-    Tilde,       // ~
-
-    Eof,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum LiteralKind {
-    Unknown,
-    BinLiteral,
-    OctLiteral,
-    DecLiteral,
-    HexLiteral,
-    FloatLiteral(bool), // is_exponent: bool
-    CharacterLiteral,
-    StringLiteral,
-    RawStringLiteral,
-    ByteLiteral,
-    ByteStringLiteral,
-    RawByteStringLiteral,
-    CStringLiteral,
-    RawCStringLiteral,
-}
+use crate::identifier::{is_identifier_continue, is_identifier_start};
+use crate::{LiteralKind, Token, TokenKind};
 
 pub struct Lexer {
     code: Vec<char>,
     token_buffer: String,
-    index: usize,
+    position: usize,
 }
 
 impl Lexer {
@@ -83,7 +12,7 @@ impl Lexer {
         Self {
             code: code.chars().collect(),
             token_buffer: "".to_string(),
-            index: 0,
+            position: 0,
         }
     }
 
@@ -160,7 +89,10 @@ impl Lexer {
         };
         if !matches!(
             token_kind,
-            TokenKind::Identifier | TokenKind::Comment | TokenKind::Literal(_)
+            TokenKind::Identifier(_)
+                | TokenKind::Comment
+                | TokenKind::Literal(_)
+                | TokenKind::WhiteSpace
         ) {
             self.push_char();
         }
@@ -200,7 +132,7 @@ impl Lexer {
             return TokenKind::Unkown;
         }
 
-        TokenKind::Identifier
+        TokenKind::Identifier(self.token_buffer.clone())
     }
 
     // Identifier or Keyword
@@ -246,6 +178,7 @@ impl Lexer {
         is_identifier_continue(c)
     }
 
+    //
     fn white_space(&mut self) -> TokenKind {
         while self.is_white_space() {
             self.push_char();
@@ -756,11 +689,11 @@ impl Lexer {
     // other
 
     fn get(&self) -> Option<char> {
-        Some(*self.code.get(self.index)?)
+        Some(*self.code.get(self.position)?)
     }
 
     fn get_next(&self) -> Option<char> {
-        Some(*self.code.get(self.index + 1)?)
+        Some(*self.code.get(self.position + 1)?)
     }
 
     fn push_char(&mut self) {
@@ -772,11 +705,11 @@ impl Lexer {
     }
 
     fn next(&mut self) {
-        self.index += 1;
+        self.position += 1;
     }
 
     fn new_token(&mut self, token_kind: TokenKind) -> Token {
-        let token = Token::new(token_kind, self.token_buffer.clone());
+        let token = Token::new(token_kind, &self.token_buffer);
         self.token_buffer.clear();
 
         token
