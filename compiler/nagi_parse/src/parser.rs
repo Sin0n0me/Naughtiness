@@ -4,6 +4,12 @@ pub struct ParseMemoKey {
     pub rule: String,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct ParseMemoValue<T> {
+    pub node: T,
+    pub next_position: usize,
+}
+
 pub enum MemoResult<T> {
     None,
     Recursive,

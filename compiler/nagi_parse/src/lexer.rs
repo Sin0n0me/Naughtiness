@@ -161,22 +161,6 @@ impl Lexer {
         }
     }
 
-    pub fn is_operator(&self) -> bool {
-        matches!(
-            self.peek(),
-            Token::Plus
-                | Token::Minus
-                | Token::Star
-                | Token::Slash
-                | Token::Percent
-                | Token::Caret
-                | Token::Not
-                | Token::And
-                | Token::Or
-                | Token::Equal
-        )
-    }
-
     pub fn get_token_position(&self) -> usize {
         self.position
     }
