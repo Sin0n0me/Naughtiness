@@ -2,4 +2,8 @@
 
 # build
 /target
+_*.bat
+_*.sh
 
+# test
+log.txt

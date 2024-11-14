@@ -31,7 +31,18 @@ impl CSTNode {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CSTNodeKind {
+    Crate {
+        inner_attributes: Vec<CSTNode>,
+        items: Vec<CSTNode>,
+    },
+
     Factor {
+        token: Token,
+        row: usize,
+        column: usize,
+    },
+
+    Operator {
         token: Token,
         row: usize,
         column: usize,
@@ -310,5 +321,13 @@ pub enum CSTNodeKind {
         identifier: Box<CSTNode>,
         at_symbol: Option<Box<CSTNode>>,
         pattern_no_top_alt: Option<Box<CSTNode>>,
+    },
+
+    WildcardPattern {
+        wildcard: Box<CSTNode>,
+    },
+
+    RestPattern {
+        rest: Box<CSTNode>,
     },
 }

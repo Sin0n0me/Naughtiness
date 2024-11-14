@@ -6,6 +6,7 @@ use crate::expression::*;
 use crate::lexer::Lexer;
 use crate::parser::*;
 
+use nagi_errors::{Error, ErrorKind, SyntaxError};
 use nagi_syntax_tree::cst::*;
 use nagi_syntax_tree::keywords::Keyword;
 use nagi_syntax_tree::token::*;
@@ -54,7 +55,10 @@ impl CSTParser {
                 vec![],
             ))
         } else {
-            Err(Error::E)
+            Err(Error {
+                error_kind: ErrorKind::Syntax(SyntaxError::NotMatch),
+                error_text: "".to_string(),
+            })
         }
     }
 
@@ -67,19 +71,19 @@ impl CSTParser {
         let key = self.make_key("InnerAttribute");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         // `#`
         if !matches!(self.lexer.peek(), Token::Pound) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let pound = Box::new(self.make_factor_and_next());
 
         // `!`
         if !matches!(self.lexer.peek(), Token::Not) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let exclamation = Box::new(self.make_factor_and_next());
 
@@ -88,7 +92,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::LeftParenthesis(LeftParenthesis::Brackets)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let left_brackets = Box::new(self.make_factor_and_next());
 
@@ -100,7 +104,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::RightParenthesis(RightParenthesis::Brackets)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let right_brackets = Box::new(self.make_factor_and_next());
 
@@ -124,13 +128,13 @@ impl CSTParser {
         let key = self.make_key("OuterAttribute");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         // `#`
         if !matches!(self.lexer.peek(), Token::Pound) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let pound = Box::new(self.make_factor_and_next());
 
@@ -139,7 +143,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::LeftParenthesis(LeftParenthesis::Brackets)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let left_brackets = Box::new(self.make_factor_and_next());
 
@@ -150,7 +154,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::RightParenthesis(RightParenthesis::Brackets)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let right_brackets = Box::new(self.make_factor_and_next());
 
@@ -173,11 +177,11 @@ impl CSTParser {
         let key = self.make_key("Attribute");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // AttributeInput ::= DelimTokenTree | `=` Expression
@@ -185,11 +189,11 @@ impl CSTParser {
         let key = self.make_key("AttributeInput");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // Visibility ::= `pub`
@@ -201,7 +205,7 @@ impl CSTParser {
         let key = self.make_key("Visibility");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -216,7 +220,7 @@ impl CSTParser {
         );
 
         if matches!(self.lexer.peek(), Token::Keyword(Keyword::Pub)) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
 
         if matches!(
@@ -238,7 +242,7 @@ impl CSTParser {
         let key = self.make_key("Item");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -273,7 +277,7 @@ impl CSTParser {
         let key = self.make_key("VisItem");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -303,7 +307,7 @@ impl CSTParser {
         // Implementation
         // ExternBlock
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     //
@@ -318,7 +322,7 @@ impl CSTParser {
         let key = self.make_key("Function");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -327,13 +331,13 @@ impl CSTParser {
 
         // `fn`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Fn)) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let fn_keyword = Box::new(self.make_factor_and_next());
 
         // Identifier
         if !matches!(self.lexer.peek(), Token::Identifier(_)) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let identifier = Box::new(self.make_factor_and_next());
 
@@ -348,7 +352,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::LeftParenthesis(LeftParenthesis::Parenthesis)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let left_parenthesis = Box::new(self.make_factor_and_next());
 
@@ -363,7 +367,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::RightParenthesis(RightParenthesis::Parenthesis)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let right_parenthesis = Box::new(self.make_factor_and_next());
 
@@ -419,7 +423,7 @@ impl CSTParser {
             return Ok(node);
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // FunctionQualifiers ::= `const`? `async`? ItemSafety? (`extern` Abi?)?
@@ -427,7 +431,7 @@ impl CSTParser {
         let key = self.make_key("FunctionQualifiers");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -481,7 +485,7 @@ impl CSTParser {
         let key = self.make_key("ItemSafety");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -489,11 +493,11 @@ impl CSTParser {
             Token::Keyword(Keyword::Unsafe) => Ok(self.make_factor_and_next()),
             Token::Identifier(identifier) => {
                 if identifier != "safe" {
-                    return self.error(Error::NotExpected, &key);
+                    return self.error(SyntaxError::ExpectedToken, &key);
                 }
                 Ok(self.make_factor_and_next())
             }
-            _ => self.error(Error::NotExpected, &key),
+            _ => self.error(SyntaxError::ExpectedToken, &key),
         }
     }
 
@@ -502,19 +506,19 @@ impl CSTParser {
         let key = self.make_key("Abi");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         match self.lexer.peek() {
             Token::Literal(literal) => {
                 if !matches!(literal.literal_kind, LiteralKind::Str | LiteralKind::StrRaw) {
-                    return self.error(Error::NotExpected, &key);
+                    return self.error(SyntaxError::ExpectedToken, &key);
                 }
 
                 Ok(self.make_factor_and_next())
             }
-            _ => self.error(Error::NotExpected, &key),
+            _ => self.error(SyntaxError::ExpectedToken, &key),
         }
     }
 
@@ -523,13 +527,13 @@ impl CSTParser {
         let key = self.make_key("GenericParams");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         // `<` `>`
         if !matches!(self.lexer.peek(), Token::LessThan) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         self.make_factor_and_next();
         if matches!(self.lexer.peek(), Token::GreaterThan) {
@@ -539,7 +543,7 @@ impl CSTParser {
         // (GenericParam `,`)* GenericParam `,`?
         // TODO
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // FunctionParameters ::= SelfParam `,`? | (SelfParam `,`)? FunctionParam (`,` FunctionParam)* `,`?
@@ -547,7 +551,7 @@ impl CSTParser {
         let key = self.make_key("FunctionParameters");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -576,7 +580,7 @@ impl CSTParser {
             return Ok(node);
         } else if first_self_param.is_err() && commna.is_some() {
             // ,のみはエラー
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let self_param = if first_self_param.is_ok() && commna.is_some() {
             Some((
@@ -630,7 +634,7 @@ impl CSTParser {
         let key = self.make_key("Selfparam");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -649,7 +653,7 @@ impl CSTParser {
             return Ok(expr);
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // ShorthandSelf ::= (`&` | `&` Lifetime)? `mut`? `self`
@@ -657,7 +661,7 @@ impl CSTParser {
         let key = self.make_key("ShorthandSelf");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -673,10 +677,10 @@ impl CSTParser {
 
         // `self`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::SelfValue)) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // TypedSelf ::= `mut`? `self` `:` Type
@@ -684,7 +688,7 @@ impl CSTParser {
         let key = self.make_key("TypedSelf");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -697,12 +701,12 @@ impl CSTParser {
 
         // `self`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::SelfValue)) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
 
         // `:`
         if !matches!(self.lexer.peek(), Token::Colon) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
 
         // Type
@@ -716,7 +720,7 @@ impl CSTParser {
         let key = self.make_key("FunctionParam");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -739,7 +743,7 @@ impl CSTParser {
 
         // Type
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // FunctionParamPattern ::= PatternNoTopAlt `:` ( Type | `...` )
@@ -747,7 +751,7 @@ impl CSTParser {
         let key = self.make_key("FunctionParamPattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -756,7 +760,7 @@ impl CSTParser {
 
         // `:`
         if !matches!(self.lexer.peek(), Token::Colon) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
 
         // ( Type | `...` )
@@ -766,7 +770,7 @@ impl CSTParser {
         };
 
         // TODO
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // FunctionReturnType ::= `->` Type
@@ -774,11 +778,11 @@ impl CSTParser {
         let key = self.make_key("FunctionReturnType");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // Structs
@@ -792,11 +796,11 @@ impl CSTParser {
         let key = self.make_key("FunctionReturnType");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     //
@@ -808,7 +812,7 @@ impl CSTParser {
         let key = self.make_key("Expression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -822,7 +826,7 @@ impl CSTParser {
             return Ok(expr);
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // ExpressionWithoutBlock ::= OuterAttribute*
@@ -836,7 +840,7 @@ impl CSTParser {
         let key = self.make_key("ExpressionWithoutBlock");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -942,14 +946,14 @@ impl CSTParser {
             ));
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     fn literal_expression(&mut self) -> Result<CSTNode, Error> {
         let key = self.make_key("LiteralExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -981,7 +985,7 @@ impl CSTParser {
                 vec![],
             ),
 
-            _ => return self.error(Error::NotExpected, &key),
+            _ => return self.error(SyntaxError::ExpectedToken, &key),
         };
 
         self.write_memo(&key, Some(&literal));
@@ -993,7 +997,7 @@ impl CSTParser {
         let key = self.make_key("PathExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1009,7 +1013,7 @@ impl CSTParser {
             return Ok(expr);
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // PathInExpression ::= `::`? PathExprSegment (`::` PathExprSegment)*
@@ -1017,7 +1021,7 @@ impl CSTParser {
         let key = self.make_key("PathInExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1085,7 +1089,7 @@ impl CSTParser {
         let key = self.make_key("PathExprSegment");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1113,7 +1117,7 @@ impl CSTParser {
         let key = self.make_key("PathIdentSegment");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1130,10 +1134,10 @@ impl CSTParser {
                     self.write_memo(&key, Some(&node));
                     Ok(node)
                 }
-                _ => self.error(Error::E, &key),
+                _ => self.error(SyntaxError::NotMatch, &key),
             },
 
-            _ => self.error(Error::E, &key),
+            _ => self.error(SyntaxError::NotMatch, &key),
         }
     }
 
@@ -1142,7 +1146,7 @@ impl CSTParser {
         let key = self.make_key("QualifiedPathInExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1153,7 +1157,7 @@ impl CSTParser {
 
         // (`::` PathExprSegment)+
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // QualifiedPathType ::= `<` Type (`as` TypePath)? `>`
@@ -1161,11 +1165,11 @@ impl CSTParser {
         let key = self.make_key("QualifiedPathType");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // QualifiedPathInType ::= QualifiedPathType (`::` TypePathSegment)+
@@ -1173,12 +1177,12 @@ impl CSTParser {
         let key = self.make_key("QualifiedPathInType");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
         self.qualified_path_type()?;
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // Pratt parsing
@@ -1187,7 +1191,7 @@ impl CSTParser {
         let key = self.make_key("OperatorExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1197,7 +1201,7 @@ impl CSTParser {
         let mut lhs: CSTNode = if is_operator(&self.lexer.peek_glue()) {
             let op = self.lexer.peek_glue();
             let Some(((), right_bp)) = prefix_binding_power(&op) else {
-                return self.error(Error::NotExpected, &key);
+                return self.error(SyntaxError::ExpectedToken, &key);
             };
 
             self.min_bp = right_bp; // 次の再帰のために保存
@@ -1219,7 +1223,7 @@ impl CSTParser {
 
             match &op {
                 Token::Eof => break,
-                _ if !is_operator(&op) => return self.error(Error::NotExpected, &key),
+                _ if !is_operator(&op) => return self.error(SyntaxError::ExpectedToken, &key),
                 _ => (),
             };
 
@@ -1279,19 +1283,19 @@ impl CSTParser {
         let key = self.make_key("BrrowExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         // (`&`|`&&`)
         if matches!(self.lexer.peek_glue(), Token::And | Token::AndAnd) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
         self.lexer.next_glue();
 
         if let Token::Keyword(keyword) = self.lexer.peek() {
             if !matches!(keyword, Keyword::Mut) {
-                return self.error(Error::E, &key);
+                return self.error(SyntaxError::NotMatch, &key);
             }
             self.lexer.next();
         } else if let Token::Identifier(identifier) = self.lexer.peek() {
@@ -1311,7 +1315,7 @@ impl CSTParser {
         let key = self.make_key("GroupedExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1322,7 +1326,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::LeftParenthesis(LeftParenthesis::Parenthesis)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let left_parenthesis = Box::new(self.make_factor_and_next());
 
@@ -1334,7 +1338,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::RightParenthesis(RightParenthesis::Parenthesis)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let right_parenthesis = Box::new(self.make_factor_and_next());
 
@@ -1353,7 +1357,7 @@ impl CSTParser {
         let key = self.make_key("StructExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1367,7 +1371,7 @@ impl CSTParser {
             ));
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // StructExprStruct ::= PathInExpression `{` (StructExprFields | StructBase)? `}`
@@ -1375,7 +1379,7 @@ impl CSTParser {
         let key = self.make_key("StructExprStruct");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1386,7 +1390,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::LeftParenthesis(LeftParenthesis::Brace)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let left_brace = Box::new(self.make_factor_and_next());
 
@@ -1403,7 +1407,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::RightParenthesis(RightParenthesis::Brace)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let right_brace = Box::new(self.make_factor_and_next());
 
@@ -1426,7 +1430,7 @@ impl CSTParser {
         let key = self.make_key("StructExprFields");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1478,7 +1482,7 @@ impl CSTParser {
         let key = self.make_key("StructExprField");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1497,9 +1501,9 @@ impl CSTParser {
             }
             Token::Literal(literal) => match literal.literal_kind {
                 LiteralKind::Integer => Box::new(self.make_factor_and_next()),
-                _ => return self.error(Error::E, &key),
+                _ => return self.error(SyntaxError::NotMatch, &key),
             },
-            _ => return self.error(Error::NotExpected, &key),
+            _ => return self.error(SyntaxError::ExpectedToken, &key),
         };
 
         Token::Literal(Literal::new(LiteralKind::Integer, "0"));
@@ -1507,7 +1511,7 @@ impl CSTParser {
         // `:`
         if !matches!(self.lexer.peek(), Token::Colon) {
             if !is_identifier {
-                return self.error(Error::E, &key);
+                return self.error(SyntaxError::NotMatch, &key);
             }
 
             let node = CSTNode::new(
@@ -1545,13 +1549,13 @@ impl CSTParser {
         let key = self.make_key("StructBase");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         // `..`
         if !matches!(self.lexer.peek(), Token::DotDot) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let dotdot = Box::new(self.make_factor_and_next());
 
@@ -1572,7 +1576,7 @@ impl CSTParser {
         let key = self.make_key("CallExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1584,7 +1588,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::LeftParenthesis(LeftParenthesis::Parenthesis)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let left_parenthesis = Box::new(self.make_factor_and_next());
 
@@ -1599,7 +1603,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::LeftParenthesis(LeftParenthesis::Parenthesis)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let right_parenthesis = Box::new(self.make_factor_and_next());
 
@@ -1654,7 +1658,7 @@ impl CSTParser {
         let key = self.make_key("MethodCallExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1662,7 +1666,7 @@ impl CSTParser {
 
         self.call_params();
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // ReturnExpression ::= `return` Expression?
@@ -1670,12 +1674,12 @@ impl CSTParser {
         let key = self.make_key("ReturnExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
         // `return`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Return)) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
         let return_keyword = Box::new(self.make_factor_and_next());
 
@@ -1700,16 +1704,18 @@ impl CSTParser {
         let key = self.make_key("Scrutinee");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         let Ok(expression) = self.expression() else {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         };
 
         match expression.node_kind {
-            CSTNodeKind::StructExpression { expression } => self.error(Error::NotExpected, &key),
+            CSTNodeKind::StructExpression { expression } => {
+                self.error(SyntaxError::ExpectedToken, &key)
+            }
             _ => return Ok(expression),
         }
     }
@@ -1723,7 +1729,7 @@ impl CSTParser {
         let key = self.make_key("ExpressionWithBlock");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
         // OuterAttribute*
@@ -1750,7 +1756,7 @@ impl CSTParser {
             return Ok(expr);
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // BlockExpression ::=  `{` InnerAttribute* Statements? `}`
@@ -1758,7 +1764,7 @@ impl CSTParser {
         let key = self.make_key("BlockExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1767,7 +1773,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::LeftParenthesis(LeftParenthesis::Brace)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let left_brace = Box::new(self.make_factor_and_next());
 
@@ -1782,7 +1788,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::RightParenthesis(RightParenthesis::Brace)
         ) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let right_brace = Box::new(self.make_factor_and_next());
 
@@ -1805,7 +1811,7 @@ impl CSTParser {
         let key = self.make_key("Statements");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -1834,7 +1840,7 @@ impl CSTParser {
             return Ok(node);
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // ConstBlockExpression ::= `const` BlockExpression
@@ -1842,19 +1848,19 @@ impl CSTParser {
         let key = self.make_key("ConstBlockExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         // `const`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Const)) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
         let const_keyword = Box::new(self.make_factor_and_next());
 
         // TODO
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // UnsafeBlockExpression ::= `unsafe` BlockExpression
@@ -1864,12 +1870,12 @@ impl CSTParser {
         let key = self.make_key("IfExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
         // `if`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::If)) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
         let if_keyword = Box::new(self.make_factor_and_next());
 
@@ -1893,7 +1899,7 @@ impl CSTParser {
             } else if let Ok(expr) = self.if_let_expression() {
                 else_expression = Some(Box::new(expr));
             } else {
-                return self.error(Error::NotExpected, &key);
+                return self.error(SyntaxError::ExpectedToken, &key);
             }
         }
 
@@ -1918,19 +1924,19 @@ impl CSTParser {
         let key = self.make_key("IfLetExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         // `if`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::If)) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
         let if_keyword = Box::new(self.make_factor_and_next());
 
         // `let`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Let)) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
         let let_keyword = Box::new(self.make_factor_and_next());
 
@@ -1939,7 +1945,7 @@ impl CSTParser {
 
         // =
         if !matches!(self.lexer.peek(), Token::Equal) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
         let equal = Box::new(self.make_factor_and_next());
 
@@ -1964,7 +1970,7 @@ impl CSTParser {
             } else if let Ok(expr) = self.if_let_expression() {
                 else_expression = Some(Box::new(expr));
             } else {
-                return self.error(Error::NotExpected, &key);
+                return self.error(SyntaxError::ExpectedToken, &key);
             }
         }
 
@@ -1991,12 +1997,12 @@ impl CSTParser {
         let key = self.make_key("MatchExpression");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
         // `match`
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Match)) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
         self.make_factor_and_next();
 
@@ -2008,7 +2014,7 @@ impl CSTParser {
             self.lexer.peek(),
             Token::LeftParenthesis(LeftParenthesis::Brace)
         ) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
         self.make_factor_and_next();
 
@@ -2026,11 +2032,11 @@ impl CSTParser {
             self.lexer.peek(),
             Token::RightParenthesis(RightParenthesis::Brace)
         ) {
-            return self.error(Error::E, &key);
+            return self.error(SyntaxError::NotMatch, &key);
         }
         self.make_factor_and_next();
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     //
@@ -2042,7 +2048,7 @@ impl CSTParser {
         let key = self.make_key("Statement");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -2091,7 +2097,7 @@ impl CSTParser {
             ));
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // LetStatement ::= OuterAttribute* (`ur` | `sr` | `nr` | `let`)
@@ -2101,7 +2107,7 @@ impl CSTParser {
         let key = self.make_key("LetStatement");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -2124,9 +2130,9 @@ impl CSTParser {
                 Keyword::Ur | Keyword::Sr | Keyword::Nr | Keyword::Let => {
                     Box::new(self.make_factor_and_next())
                 }
-                _ => return self.error(Error::NotExpected, &key),
+                _ => return self.error(SyntaxError::ExpectedToken, &key),
             },
-            _ => return self.error(Error::NotExpected, &key),
+            _ => return self.error(SyntaxError::ExpectedToken, &key),
         };
 
         // PatternNoTopAlt
@@ -2151,7 +2157,7 @@ impl CSTParser {
             // `else`
             if let Token::Keyword(keyword) = self.lexer.peek() {
                 if !matches!(keyword, Keyword::Else) {
-                    return self.error(Error::NotExpected, &key);
+                    return self.error(SyntaxError::ExpectedToken, &key);
                 }
                 else_keyword = Some(Box::new(self.make_factor_and_next()));
 
@@ -2162,7 +2168,7 @@ impl CSTParser {
 
         // ;
         if !matches!(self.lexer.peek(), Token::Semicolon) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
         let semicolon = Box::new(self.make_factor_and_next());
 
@@ -2191,7 +2197,7 @@ impl CSTParser {
         let key = self.make_key("ExpressionStatement");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -2210,7 +2216,7 @@ impl CSTParser {
             return Ok(expr);
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     //
@@ -2222,7 +2228,7 @@ impl CSTParser {
         let key = self.make_key("Pattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
         let mut or_token = None;
@@ -2238,7 +2244,7 @@ impl CSTParser {
             //
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // PatternNoTopAlt ::= PatternWithoutRange | RangePattern
@@ -2246,7 +2252,7 @@ impl CSTParser {
         let key = self.make_key("PatternNoTopAlt");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -2255,7 +2261,7 @@ impl CSTParser {
             return Ok(expr);
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // PatternWithoutRange ::= LiteralPattern | IdentifierPattern | WildcardPattern | RestPattern |
@@ -2265,7 +2271,7 @@ impl CSTParser {
         let key = self.make_key("PatternWithoutRange");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -2299,7 +2305,7 @@ impl CSTParser {
             return Ok(expr);
         }
 
-        self.error(Error::E, &key)
+        self.error(SyntaxError::NotMatch, &key)
     }
 
     // LiteralPattern ::= `true` | `false`
@@ -2317,7 +2323,7 @@ impl CSTParser {
         let key = self.make_key("LiteralPattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -2344,7 +2350,7 @@ impl CSTParser {
                     self.write_memo(&key, Some(&node));
                     Ok(node)
                 }
-                _ => self.error(Error::NotExpected, &key),
+                _ => self.error(SyntaxError::ExpectedToken, &key),
             },
             Token::Literal(literal) => {
                 let node = CSTNode::new(CSTNodeKind::LiteralPattern { literal }, vec![]);
@@ -2354,7 +2360,7 @@ impl CSTParser {
             //
             Token::Minus => {
                 let Token::Literal(literal) = self.lexer.next() else {
-                    return self.error(Error::E, &key);
+                    return self.error(SyntaxError::NotMatch, &key);
                 };
 
                 match literal.literal_kind {
@@ -2363,11 +2369,11 @@ impl CSTParser {
                         self.write_memo(&key, Some(&node));
                         Ok(node)
                     }
-                    _ => self.error(Error::E, &key),
+                    _ => self.error(SyntaxError::NotMatch, &key),
                 }
             }
 
-            _ => self.error(Error::E, &key),
+            _ => self.error(SyntaxError::NotMatch, &key),
         }
     }
 
@@ -2376,7 +2382,7 @@ impl CSTParser {
         let key = self.make_key("IdentifierPattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -2402,7 +2408,7 @@ impl CSTParser {
         // Identifier
         let identifier = match self.lexer.peek() {
             Token::Identifier(_) => Box::new(self.make_factor_and_next()),
-            _ => return self.error(Error::E, &key),
+            _ => return self.error(SyntaxError::NotMatch, &key),
         };
 
         // (`@` PatternNoTopAlt )?
@@ -2431,17 +2437,22 @@ impl CSTParser {
         let key = self.make_key("WildcardPattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         match self.lexer.peek() {
             Token::Underscore => {
-                let node = self.make_factor();
+                let node = CSTNode::new(
+                    CSTNodeKind::WildcardPattern {
+                        wildcard: Box::new(self.make_factor_and_next()),
+                    },
+                    vec![],
+                );
                 self.write_memo(&key, Some(&node));
                 Ok(node)
             }
-            _ => self.error(Error::NotExpected, &key),
+            _ => self.error(SyntaxError::ExpectedToken, &key),
         }
     }
 
@@ -2450,7 +2461,7 @@ impl CSTParser {
         let key = self.make_key("RestPattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
@@ -2458,17 +2469,22 @@ impl CSTParser {
             Token::DotDot => {
                 let pos = self.lexer.get_sorce_position();
                 let node = CSTNode::new(
-                    CSTNodeKind::Factor {
-                        token: self.lexer.next_glue(),
-                        row: pos.0,
-                        column: pos.1,
+                    CSTNodeKind::RestPattern {
+                        rest: Box::new(CSTNode::new(
+                            CSTNodeKind::Factor {
+                                token: self.lexer.next_glue(),
+                                row: pos.0,
+                                column: pos.1,
+                            },
+                            vec![],
+                        )),
                     },
                     vec![],
                 );
                 self.write_memo(&key, Some(&node));
                 Ok(node)
             }
-            _ => self.error(Error::NotExpected, &key),
+            _ => self.error(SyntaxError::ExpectedToken, &key),
         }
     }
 
@@ -2477,18 +2493,18 @@ impl CSTParser {
         let key = self.make_key("ReferencePattern");
         match self.get_memo(&key) {
             MemoResult::Some(res) => return Ok(res),
-            MemoResult::Recursive => return Err(Error::Recursive),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
             MemoResult::None => self.write_memo(&key, None),
         };
 
         // (`&`|`&&`)
         if !matches!(self.lexer.peek_glue(), Token::And | Token::AndAnd) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
 
         // mut?
         if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Mut)) {
-            return self.error(Error::NotExpected, &key);
+            return self.error(SyntaxError::ExpectedToken, &key);
         }
 
         // PatternWithoutRange
@@ -2605,7 +2621,7 @@ impl CSTParser {
     }
 
     // まともなエラー出力用のプロジェクトができるまで仮で
-    fn error(&mut self, error_type: Error, key: &ParseMemoKey) -> Result<CSTNode, Error> {
+    fn error(&mut self, error_type: SyntaxError, key: &ParseMemoKey) -> Result<CSTNode, Error> {
         self.log.push_str(&format!(
             "Error({:?}) {} pos: {:?} token: {:?}\n",
             error_type,
@@ -2616,7 +2632,10 @@ impl CSTParser {
 
         self.backtrack(key.position);
 
-        Err(error_type)
+        Err(Error {
+            error_kind: ErrorKind::Syntax(error_type),
+            error_text: "".to_string(),
+        })
     }
 
     pub fn output_log_file(&self, file_name: &str) {

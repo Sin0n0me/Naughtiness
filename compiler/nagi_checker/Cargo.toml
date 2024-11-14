@@ -1,7 +1,8 @@
 [package]
-name = "nagi_lexer"
+name = "nagi_checker"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 nagi_errors = { version = "0.1.0", path = "../nagi_errors" }
+nagi_syntax_tree = { version = "0.1.0", path = "../nagi_syntax_tree" }

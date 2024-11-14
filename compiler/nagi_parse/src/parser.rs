@@ -10,15 +10,9 @@ pub struct ParseMemoValue<T> {
     pub next_position: usize,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MemoResult<T> {
     None,
     Recursive,
     Some(T),
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Error {
-    E,
-    Recursive,
-    NotExpected, // 期待したトークンではなかった
 }
