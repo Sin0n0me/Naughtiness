@@ -46,7 +46,11 @@ impl CSTParser {
             items.push(item);
         }
 
+        //println!("{:#?}", self.memo);
+
         if matches!(self.lexer.peek(), Token::Eof) {
+            self.log.push_str("Parse success\n");
+
             Ok(CSTNode::new(
                 CSTNodeKind::Crate {
                     inner_attributes,
@@ -55,6 +59,7 @@ impl CSTParser {
                 vec![],
             ))
         } else {
+            self.log.push_str("Parse error\n");
             Err(Error {
                 error_kind: ErrorKind::Syntax(SyntaxError::NotMatch),
                 error_text: "".to_string(),
@@ -1215,17 +1220,25 @@ impl CSTParser {
             self.memo.remove(&self.make_key("Expression"));
             self.memo.remove(&self.make_key("ExpressionWithoutBlock"));
             self.expression()?
+
+            /*
+            match self.expression() {
+                Ok(expr) => expr,
+                Err(error) => {
+                    self.min_bp = 0;
+                    return Err(error);
+                }
+            }
+             * */
         };
 
         loop {
             let op_pos = self.lexer.get_sorce_position();
             let op = self.lexer.peek_glue();
 
-            match &op {
-                Token::Eof => break,
-                _ if !is_operator(&op) => return self.error(SyntaxError::ExpectedToken, &key),
-                _ => (),
-            };
+            if !is_operator(&op) {
+                break;
+            }
 
             // 後置演算子
             if let Some((left_bp, ())) = postfix_binding_power(&op) {
@@ -2153,6 +2166,7 @@ impl CSTParser {
 
             // Expression
             expression = Some(Box::new(self.expression()?));
+            //self.min_bp = 0;
 
             // `else`
             if let Token::Keyword(keyword) = self.lexer.peek() {
@@ -2570,6 +2584,11 @@ impl CSTParser {
         ));
 
         if let Some(node) = memo {
+            match key.rule.as_str() {
+                "Statement" => self.min_bp = 0,
+                _ => (),
+            };
+
             self.memo.insert(
                 key.clone(),
                 Some(ParseMemoValue {
@@ -2583,13 +2602,14 @@ impl CSTParser {
     }
 
     fn get_memo(&mut self, key: &ParseMemoKey) -> MemoResult<CSTNode> {
-        let Some(node) = self.memo.get(&key) else {
+        let Some(node) = self.memo.get(key) else {
             self.log.push_str(&format!(
                 "First call to {} pos: {:?} token: {:?} \n",
                 key.rule,
                 key.position,
                 self.lexer.peek()
             ));
+
             return MemoResult::None;
         };
 
@@ -2645,7 +2665,7 @@ impl CSTParser {
             .open(file_name)
             .unwrap();
         let Err(_) = write!(log_file, "{}", self.log) else {
-            assert!(false);
+            println!("log output error!");
             return;
         };
     }

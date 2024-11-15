@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+nagi_command_option = { version = "0.1.0", path = "../nagi_command_option" }
 nagi_errors = { version = "0.1.0", path = "../nagi_errors" }
 nagi_lexer = { version = "0.1.0", path = "../nagi_lexer" }
 nagi_syntax_tree = { version = "0.1.0", path = "../nagi_syntax_tree" }
