@@ -1,10 +1,12 @@
 [package]
-name = "nagi_parse"
+name = "nagi_driver"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+nagi_checker = { version = "0.1.0", path = "../nagi_checker" }
 nagi_command_option = { version = "0.1.0", path = "../nagi_command_option" }
 nagi_errors = { version = "0.1.0", path = "../nagi_errors" }
+nagi_extender = { version = "0.1.0", path = "../nagi_extender" }
 nagi_lexer = { version = "0.1.0", path = "../nagi_lexer" }
-nagi_syntax_tree = { version = "0.1.0", path = "../nagi_syntax_tree" }
+nagi_parse = { version = "0.1.0", path = "../nagi_parse" }

@@ -54,9 +54,11 @@ pub fn infix_binding_power(op: &Token) -> Option<(u16, u16)> {
 }
 
 pub fn postfix_binding_power(op: &Token) -> Option<(u16, ())> {
-    let res = match op {
-        _ => return None,
-    };
+    None // TODO
+}
 
-    Some(res)
+pub fn is_operator(token: &Token) -> bool {
+    prefix_binding_power(token).is_some()
+        || infix_binding_power(token).is_some()
+        || postfix_binding_power(token).is_some()
 }

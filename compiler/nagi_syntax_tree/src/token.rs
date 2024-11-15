@@ -9,6 +9,9 @@ pub enum BinaryOperator {
     Mul,
     Div,
     Mod,
+    Xor,
+    Or,
+    And,
     LeftShift,
     RightShiht,
 }
@@ -73,8 +76,6 @@ pub enum Token {
     LeftParenthesis(LeftParenthesis),
     RightParenthesis(RightParenthesis),
 
-    BinaryOperator,
-
     // operator
     Plus,               // +
     Minus,              // -
@@ -127,60 +128,10 @@ pub enum Token {
     Eof,
 }
 
-impl Token {
-    pub fn is_operator(&self) -> bool {
-        is_operator(self)
-    }
-}
-pub fn is_operator(token: &Token) -> bool {
-    matches!(
-        token,
-        Token::Plus
-            | Token::Minus
-            | Token::Star
-            | Token::Slash
-            | Token::Percent
-            | Token::Caret
-            | Token::Not
-            | Token::And
-            | Token::Or
-            | Token::AndAnd
-            | Token::OrOr
-            | Token::LeftShift
-            | Token::RightShift
-            | Token::PlusEqual
-            | Token::MinusEqual
-            | Token::StarEqual
-            | Token::SlashEqual
-            | Token::PercentEqual
-            | Token::CaretEqual
-            | Token::AndEqual
-            | Token::OrEqual
-            | Token::LeftShiftEqual
-            | Token::RightShiftEqual
-            | Token::Equal
-            | Token::EqualEqual
-            | Token::NotEqual
-            | Token::GreaterThan
-            | Token::LessThan
-            | Token::GreaterThanOrEqual
-            | Token::LessThanOrEqual
-            | Token::At
-            | Token::Underscore
-            | Token::Dot
-            | Token::DotDot
-            | Token::DotDotDot
-            | Token::DotDotEqual
-            | Token::Comma
-            | Token::Semicolon
-            | Token::Colon
-            | Token::PathSeparater
-            | Token::RightAllow
-            | Token::FatAllow
-            | Token::LeftAllow
-            | Token::Pound
-            | Token::Dollar
-            | Token::Question
-            | Token::Tilde
-    )
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
+pub enum Rarity {
+    Ur,
+    Sr,
+    Nr,
+    Let,
 }
