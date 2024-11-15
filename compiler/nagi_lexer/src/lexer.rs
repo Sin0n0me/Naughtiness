@@ -21,10 +21,10 @@ impl Lexer {
     pub fn tokenize(&mut self) -> Vec<Token> {
         let mut token_list = Vec::<Token>::new();
         while let Some(token) = self.next_token() {
-            println!("Token: {:?}", token);
             token_list.push(token);
         }
 
+        //println!("Token: {:?}", token);
         token_list
     }
 

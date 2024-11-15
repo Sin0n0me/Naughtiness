@@ -55,15 +55,19 @@ impl SemanticAnalyzer {
             }
         };
 
+        //println!("{:#?}", self.symbol_table);
+
         Ok(ast)
     }
+
+    pub fn type_check(&mut self) {}
 }
 
 fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, Error> {
     let ast = match &cst.node_kind {
         CSTNodeKind::Crate {
-            inner_attributes,
-            items,
+            inner_attributes:_,
+            items:_,
         } => {
             panic!();
         }
@@ -85,35 +89,8 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
             token,
             row: _,
             column: _,
-        } => {
-            let Some(left_child) = cst.children.first() else {
-                panic!();
-            };
-            let left = Box::new(analyze(left_child, symbol_tree)?);
-
-            let Some(right_child) = cst.children.first() else {
-                panic!();
-            };
-            let right = Box::new(analyze(right_child, symbol_tree)?);
-
-            let operator = match token {
-                Token::Plus => BinaryOperator::Add,
-                Token::Minus => BinaryOperator::Sub,
-                Token::Star => BinaryOperator::Mul,
-                Token::Slash => BinaryOperator::Div,
-                Token::Percent => BinaryOperator::Mod,
-                Token::Caret => BinaryOperator::Xor,
-                Token::LeftShift => BinaryOperator::LeftShift,
-                Token::RightShift => BinaryOperator::RightShiht,
-                _ => panic!(),
-            };
-
-            ASTNode::new(ASTNodeKind::BinaryOperator {
-                operator,
-                left,
-                right,
-            })
-        }
+        } => analyze_operator(cst, symbol_tree, token)?
+                  ,
         CSTNodeKind::InnerAttribute {
             pound: _,
             exclamation: _,
@@ -136,6 +113,37 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
         CSTNodeKind::Expression { expression } => ASTNode::new(ASTNodeKind::Expression {
             expression: Box::new(analyze(expression, symbol_tree)?),
         }),
+
+        CSTNodeKind::ExpressionWithBlock { outer_attribute, expression_with_block } => {
+
+            let mut ast_outer_attribute = vec![];
+            for expr in outer_attribute.iter() {
+                ast_outer_attribute.push(analyze(expr, symbol_tree)?);
+            }
+            let ast_expression_with_block = Box::new(analyze(expression_with_block, symbol_tree)?);
+
+            ASTNode::new(ASTNodeKind::ExpressionWithBlock{
+outer_attribute: ast_outer_attribute,
+    expression_with_block: ast_expression_with_block,
+
+            })
+        }
+
+        CSTNodeKind::ExpressionWithoutBlock { outer_attribute, expression } => {
+           let mut ast_outer_attribute = vec![];
+            for expr in outer_attribute.iter() {
+                ast_outer_attribute.push(analyze(expr, symbol_tree)?);
+            }
+            let ast_expression = Box::new(analyze(expression, symbol_tree)?);
+
+            ASTNode::new(ASTNodeKind::ExpressionWithoutBlock{
+outer_attribute: ast_outer_attribute,
+    expression: ast_expression,
+
+            })
+
+
+        }
 
         CSTNodeKind::LiteralExpression { literal } => analyze(literal, symbol_tree)?,
 
@@ -234,7 +242,13 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
             }
 
             // TODO 戻り値の型
-            symbol_tree.insert_function(ident, None);
+            if !symbol_tree.insert_function(ident, None) {
+                //panic!("`{}`関数はすでに定義されています", ident);
+                return Err(Error{
+error_kind: ErrorKind::Semantic(SemanticError::RedefinitionFunction),
+error_text: format!("`{}`関数はすでに定義されています", ident)
+                })
+            }
 
             // BlockExpression内の定義をみていく
             let mut ast_block_expression = None;
@@ -253,9 +267,55 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
             })
         }
 
+        CSTNodeKind::FunctionQualifiers {
+            const_keyword,
+            async_keyword,
+            item_safety,
+            extern_keyword,
+            abi,
+        } => {
+            let mut ast_item_safety = None;
+            if let Some(expr) = item_safety {
+                //ast_item_safety = Some();
+            }
+
+            let mut ast_abi = None;
+            if let Some(expr) = abi {
+                //ast_abi = Some();
+            }
+
+            ASTNode::new(ASTNodeKind::FunctionQualifiers {
+                const_keyword: const_keyword.is_some(),
+                async_keyword: async_keyword.is_some(),
+                item_safety: ast_item_safety,
+                extern_keyword: extern_keyword.is_some(),
+                abi: ast_abi,
+            })
+        }
+
         // Struct
         CSTNodeKind::StructExpression { expression } => {
             panic!();
+        }
+
+        // Pattern
+        CSTNodeKind::IdentifierPattern {
+            ref_keyword,
+            mut_keyword,
+            identifier,
+            at_symbol:_,
+            pattern_no_top_alt,
+        } => analyze_identifier_pattern(symbol_tree, ref_keyword.is_some(), mut_keyword.is_some(), &identifier.node_kind,pattern_no_top_alt)?
+        ,
+
+        // Statements
+        CSTNodeKind::Statements => {
+            let mut statements = vec![];
+            for child in cst.children.iter() {
+                statements.push(analyze(child, symbol_tree)?);
+            }
+
+            ASTNode::new(ASTNodeKind::Statements { statements })
         }
 
         CSTNodeKind::Statement { statement } => ASTNode::new(ASTNodeKind::Statement {
@@ -274,56 +334,136 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
             block_expression,
             semicolon: _,
         } => {
-            let mut ast_outer_attribute = vec![];
-            for expr in outer_attribute {
-                ast_outer_attribute.push(analyze(expr, symbol_tree)?);
-            }
-
-            let CSTNodeKind::Factor {
-                token,
-                row: _,
-                column: _,
-            } = &rarity.node_kind
-            else {
-                panic!();
-            };
-            let ast_rarity = match token {
-                Token::Keyword(Keyword::Let) => Rarity::Let,
-                Token::Keyword(Keyword::Ur) => Rarity::Ur,
-                Token::Keyword(Keyword::Sr) => Rarity::Sr,
-                Token::Keyword(Keyword::Nr) => Rarity::Nr,
-                _ => panic!(),
-            };
-
-            let ast_pattern_no_top_alt = Box::new(analyze(pattern_no_top_alt, symbol_tree)?);
-
-            let mut ast_type_expression = None;
-            if let Some(expr) = type_expression {
-                ast_type_expression = Some(Box::new(analyze(expr, symbol_tree)?));
-            }
-
-            let mut ast_expression = None;
-            if let Some(expr) = expression {
-                ast_expression = Some(Box::new(analyze(expr, symbol_tree)?));
-            }
-
-            let mut ast_block_expression = None;
-            if let Some(expr) = block_expression {
-                ast_block_expression = Some(Box::new(analyze(expr, symbol_tree)?));
-            }
-
-            ASTNode::new(ASTNodeKind::LetStatement {
-                outer_attribute: ast_outer_attribute,
-                rarity: ast_rarity,
-                pattern_no_top_alt: ast_pattern_no_top_alt,
-                type_expression: ast_type_expression,
-                expression: ast_expression,
-                block_expression: ast_block_expression,
-            })
+            analyze_let_statement(symbol_tree, outer_attribute,
+                rarity,pattern_no_top_alt,type_expression,
+                expression,block_expression)?
         }
 
-        _ => panic!(),
+        _ => panic!("{:?}", cst.node_kind),
     };
 
     Ok(ast)
+}
+
+fn analyze_operator(
+    cst: &CSTNode,
+    symbol_tree: &mut SymbolTreeNode,
+    token: &Token,
+) -> Result<ASTNode, Error> {
+    let Some(left_child) = cst.children.first() else {
+        panic!();
+    };
+    let left = Box::new(analyze(left_child, symbol_tree)?);
+
+    let Some(right_child) = cst.children.first() else {
+        panic!();
+    };
+    let right = Box::new(analyze(right_child, symbol_tree)?);
+
+    let operator = match token {
+        Token::Plus => BinaryOperator::Add,
+        Token::Minus => BinaryOperator::Sub,
+        Token::Star => BinaryOperator::Mul,
+        Token::Slash => BinaryOperator::Div,
+        Token::Percent => BinaryOperator::Mod,
+        Token::Caret => BinaryOperator::Xor,
+        Token::LeftShift => BinaryOperator::LeftShift,
+        Token::RightShift => BinaryOperator::RightShiht,
+        _ => panic!(),
+    };
+
+    Ok(ASTNode::new(ASTNodeKind::BinaryOperator {
+        operator,
+        left,
+        right,
+    }))
+}
+
+fn analyze_identifier_pattern(
+    symbol_tree: &mut SymbolTreeNode,
+    ref_keyword: bool,
+    mut_keyword: bool,
+    node_kind: &CSTNodeKind,
+    pattern_no_top_alt: &Option<Box<CSTNode>>,
+) -> Result<ASTNode, Error> {
+    let CSTNodeKind::Factor {
+        token,
+        row: _,
+        column: _,
+    } = node_kind
+    else {
+        panic!();
+    };
+    let Token::Identifier(ident) = token else {
+        panic!();
+    };
+
+    let mut ast_pattern_no_top_alt = None;
+    if let Some(expr) = pattern_no_top_alt {
+        ast_pattern_no_top_alt = Some(Box::new(analyze(expr, symbol_tree)?));
+    }
+
+    Ok(ASTNode::new(ASTNodeKind::IdentifierPattern {
+        ref_keyword,
+        mut_keyword,
+        identifier: ident.to_string(),
+        pattern_no_top_alt: ast_pattern_no_top_alt,
+    }))
+}
+
+fn analyze_let_statement(
+    symbol_tree: &mut SymbolTreeNode,
+    outer_attribute: &Vec<CSTNode>,
+    rarity: &CSTNode,
+    pattern_no_top_alt: &CSTNode,
+    type_expression: &Option<Box<CSTNode>>,
+    expression: &Option<Box<CSTNode>>,
+    block_expression: &Option<Box<CSTNode>>,
+) -> Result<ASTNode, Error> {
+    let mut ast_outer_attribute = vec![];
+    for expr in outer_attribute {
+        ast_outer_attribute.push(analyze(expr, symbol_tree)?);
+    }
+
+    let CSTNodeKind::Factor {
+        token,
+        row: _,
+        column: _,
+    } = &rarity.node_kind
+    else {
+        panic!();
+    };
+    let ast_rarity = match token {
+        Token::Keyword(Keyword::Let) => Rarity::Let,
+        Token::Keyword(Keyword::Ur) => Rarity::Ur,
+        Token::Keyword(Keyword::Sr) => Rarity::Sr,
+        Token::Keyword(Keyword::Nr) => Rarity::Nr,
+        _ => panic!("Unknown Rarity"),
+    };
+
+    let ast_pattern_no_top_alt = Box::new(analyze(pattern_no_top_alt, symbol_tree)?);
+
+    let mut ast_type_expression = None;
+    if let Some(expr) = type_expression {
+        ast_type_expression = Some(Box::new(analyze(expr, symbol_tree)?));
+    }
+
+    let mut ast_expression = None;
+    if let Some(expr) = expression {
+        ast_expression = Some(Box::new(analyze(expr, symbol_tree)?));
+    }
+
+    let mut ast_block_expression = None;
+    if let Some(expr) = block_expression {
+        ast_block_expression = Some(Box::new(analyze(expr, symbol_tree)?));
+    }
+
+    Ok(ASTNode::new(ASTNodeKind::LetStatement {
+        outer_attribute: ast_outer_attribute,
+        rarity: ast_rarity,
+        pattern_no_top_alt: ast_pattern_no_top_alt,
+        type_expression: ast_type_expression,
+        expression: ast_expression,
+        block_expression: ast_block_expression,
+    }))
 }

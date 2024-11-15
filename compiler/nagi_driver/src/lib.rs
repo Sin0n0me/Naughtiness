@@ -1,12 +1,6 @@
-use std::io::prelude::*;
-use std::iter::Skip;
-use std::path::{Path, PathBuf};
-use std::{env, fs, io::Read, process, time::Instant};
+use std::{env, fs, process, time::Instant};
 
-use nagi_checker::*;
-use nagi_command_option::*;
-use nagi_extender::*;
-use nagi_parse::*;
+use nagi_command_option::CompileCommandOption;
 
 #[derive(Debug)]
 pub enum ExitStatus {
@@ -18,7 +12,7 @@ pub enum ExitStatus {
 
 pub fn driver() {
     let start_time = Instant::now();
-    let pragram: String = env::args().next().unwrap();
+    //let pragram: String = env::args().next().unwrap();
     let Some(command) = env::args().nth(1) else {
         process::exit(ExitStatus::UnknownCommand as i32);
     };
@@ -39,7 +33,7 @@ pub fn driver() {
 }
 
 fn run_compiler(args: &Vec<String>) -> ExitStatus {
-    println!("curdir : {}", env::current_dir().unwrap().display());
+    println!("workdir : {}", env::current_dir().unwrap().display());
     let Ok(compile_option) = CompileCommandOption::new(args) else {
         return ExitStatus::InvalidArgs;
     };
@@ -50,9 +44,7 @@ fn run_compiler(args: &Vec<String>) -> ExitStatus {
             return ExitStatus::CompileFailure;
         };
 
-        println!("{}", code);
-
-        let Ok(cst) = nagi_parse::parse(&code) else {
+        let Ok(cst) = nagi_parse::parse(&code, &compile_option) else {
             return ExitStatus::CompileFailure;
         };
 
@@ -65,6 +57,7 @@ fn run_compiler(args: &Vec<String>) -> ExitStatus {
             return ExitStatus::CompileFailure;
         };
 
+        ast.write_ast("a.json"); // test
         ast_list.push(ast);
     }
 
@@ -73,7 +66,7 @@ fn run_compiler(args: &Vec<String>) -> ExitStatus {
 
 fn open_file(file_path: &str) -> Result<String, ()> {
     let Ok(sorce_code) = fs::read_to_string(file_path) else {
-        return Err(());
+        return Err(()); //TODO
     };
 
     Ok(sorce_code)

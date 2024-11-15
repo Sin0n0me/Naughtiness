@@ -13,9 +13,7 @@ mod type_checker;
 pub fn check(cst: &CSTNode) -> Result<ASTNode, Error> {
     let mut analyzer = SemanticAnalyzer::new();
 
-    let ast = analyzer.semantic_analyze(cst)?;
-
-    Ok(ast)
+    analyzer.semantic_analyze(cst)
 }
 
 #[derive(Debug, Clone)]
@@ -45,14 +43,16 @@ impl SymbolTreeNode {
         child.as_ref().clone()
     }
 
-    pub fn insert_function(&mut self, symbol_name: &str, return_type: Option<SymbolType>) {
-        self.symbol_table.insert(
-            SymbolKey {
-                symbol_pattern: SymbolPattern::Function,
-                symbol_name: symbol_name.to_string(),
-            },
-            SymbolRecord::Function(FunctionSymbolRecord { return_type }),
-        );
+    pub fn insert_function(&mut self, symbol_name: &str, return_type: Option<SymbolType>) -> bool {
+        self.symbol_table
+            .insert(
+                SymbolKey {
+                    symbol_pattern: SymbolPattern::Function,
+                    symbol_name: symbol_name.to_string(),
+                },
+                SymbolRecord::Function(FunctionSymbolRecord { return_type }),
+            )
+            .is_none()
     }
 
     pub fn insert_variable(

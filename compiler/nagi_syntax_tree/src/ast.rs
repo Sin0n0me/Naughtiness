@@ -6,15 +6,11 @@ use std::io::prelude::*;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ASTNode {
     pub node_kind: ASTNodeKind,
-    pub children: Vec<ASTNode>,
 }
 
 impl ASTNode {
     pub fn new(node_kind: ASTNodeKind) -> Self {
-        Self {
-            node_kind,
-            children: Vec::new(),
-        }
+        Self { node_kind }
     }
 
     pub fn write_ast(&self, file_name: &str) {
@@ -73,12 +69,17 @@ pub enum ASTNodeKind {
     FunctionQualifiers {
         const_keyword: bool,
         async_keyword: bool,
-        item_safety: bool,
+        item_safety: Option<Box<ASTNode>>,
         extern_keyword: bool,
         abi: Option<Box<ASTNode>>,
     },
 
     Expression {
+        expression: Box<ASTNode>,
+    },
+
+    ExpressionWithoutBlock {
+        outer_attribute: Vec<ASTNode>,
         expression: Box<ASTNode>,
     },
 
@@ -132,8 +133,7 @@ pub enum ASTNodeKind {
     IdentifierPattern {
         ref_keyword: bool,
         mut_keyword: bool,
-        identifier: Box<ASTNode>,
-        at_symbol: bool,
+        identifier: String,
         pattern_no_top_alt: Option<Box<ASTNode>>,
     },
 
@@ -143,6 +143,10 @@ pub enum ASTNodeKind {
 
     RestPattern {
         rest: Box<ASTNode>,
+    },
+
+    Statements {
+        statements: Vec<ASTNode>,
     },
 
     Statement {

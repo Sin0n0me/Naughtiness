@@ -29,8 +29,6 @@ impl CompileCommandOption {
 
         let mut iter = args.iter();
         while let Some(option) = iter.next() {
-            println!("{}", option);
-
             match option.as_str() {
                 "--path" => {
                     let path_list = extract_path(&iter.as_slice().to_vec());
