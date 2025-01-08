@@ -56,6 +56,11 @@ pub enum ASTNodeKind {
 
     Visibility {},
 
+    VisItem {
+        visibility: Option<Box<ASTNode>>,
+        item: Box<ASTNode>,
+    },
+
     Function {
         function_qualifiers: Box<ASTNode>,
         identifier: String,
@@ -94,8 +99,7 @@ pub enum ASTNodeKind {
 
     // PathInExpression ::= `::`? PathExprSegment (`::` PathExprSegment)*
     PathInExpression {
-        path_expr_segment: Box<ASTNode>,
-        repeat_path_expr_segment: Vec<ASTNode>,
+        path_expr_segment: Vec<ASTNode>,
     },
 
     // PathExprSegment ::= PathIdentSegment (`::` GenericArgs)?

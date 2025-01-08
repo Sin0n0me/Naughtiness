@@ -8,6 +8,7 @@ pub struct CompileCommandOption {
     pub is_debug: bool,
     pub is_compiler_debug: bool,
     pub is_output_ast: bool,
+    pub is_no_extend: bool,
     pub target_list: Vec<String>,
 }
 
@@ -16,6 +17,7 @@ impl CompileCommandOption {
         let mut is_debug = false;
         let mut is_compiler_debug = false;
         let mut is_output_ast = false;
+        let mut is_no_extend = false;
         let mut target_list = vec![];
 
         if args.first().is_none() {
@@ -23,6 +25,7 @@ impl CompileCommandOption {
                 is_debug,
                 is_compiler_debug,
                 is_output_ast,
+                is_no_extend,
                 target_list: get_file(&PathBuf::from("./"), true).unwrap(),
             });
         };
@@ -58,6 +61,9 @@ impl CompileCommandOption {
                 "--ast" => {
                     is_output_ast = true;
                 }
+                "--no-extend" => {
+                    is_no_extend = true;
+                }
 
                 _ => {
                     let text = format!("unknown option '{}'", option);
@@ -71,6 +77,7 @@ impl CompileCommandOption {
             is_debug,
             is_compiler_debug,
             is_output_ast,
+            is_no_extend,
             target_list,
         })
     }

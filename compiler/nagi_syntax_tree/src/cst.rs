@@ -31,6 +31,8 @@ impl CSTNode {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CSTNodeKind {
+    None, // 一時
+
     Crate {
         inner_attributes: Vec<CSTNode>,
         items: Vec<CSTNode>,
@@ -38,41 +40,41 @@ pub enum CSTNodeKind {
 
     Factor {
         token: Token,
-        row: usize,
-        column: usize,
+        index: usize,
     },
 
     Operator {
         token: Token,
-        row: usize,
-        column: usize,
+        left: Option<Box<CSTNode>>,
+        right: Option<Box<CSTNode>>,
+        index: usize,
     },
 
     Literal {
         literal: Literal,
-        row: usize,
-        column: usize,
+        index: usize,
     },
+
+    //
+    // Attribute
+    //
 
     // InnerAttribute ::= `#` `!` `[` Attribute `]`
     InnerAttribute {
-        pound: Box<CSTNode>,
-        exclamation: Box<CSTNode>,
-        left_brackets: Box<CSTNode>,
         attribute: Box<CSTNode>,
-        right_brackets: Box<CSTNode>,
     },
 
     // OuterAttribute ::= `#` `[` Attribute `]`
     OuterAttribute {
-        pound: Box<CSTNode>,
-        left_brackets: Box<CSTNode>,
         attribute: Box<CSTNode>,
-        right_brackets: Box<CSTNode>,
     },
 
     // Attribute ::= SimplePath AttributeInput?  | `unsafe` `(` SimplePath AttributeInput? `)`
     Attribute,
+
+    //
+    // Item
+    //
 
     // Visibility ::= `pub`
     //              | `pub` `(` `crate` `)`
@@ -83,8 +85,17 @@ pub enum CSTNodeKind {
         pub_keyword: Box<CSTNode>,
     },
 
+    VisItem {
+        visibility: Option<Box<CSTNode>>,
+        item: Box<CSTNode>,
+    },
+
     // Item ::= OuterAttribute* VisItem | MacroItem
     Item,
+
+    //
+    // Function
+    //
 
     // Function ::= FunctionQualifiers `fn` Identifier GenericParams?
     //             `(` FunctionParameters? `)`
@@ -92,12 +103,9 @@ pub enum CSTNodeKind {
     //             ( BlockExpression | `;` )
     Function {
         function_qualifiers: Box<CSTNode>,
-        fn_keyword: Box<CSTNode>,
         identifier: Box<CSTNode>,
         generic_params: Option<Box<CSTNode>>,
-        left_parenthesis: Box<CSTNode>,
         function_parameters: Option<Box<CSTNode>>,
-        right_parenthesis: Box<CSTNode>,
         function_return_type: Option<Box<CSTNode>>,
         where_clause: Option<Box<CSTNode>>,
         block_expression_or_semicolon: Box<CSTNode>,
@@ -113,18 +121,82 @@ pub enum CSTNodeKind {
     },
 
     // FunctionParameters ::= SelfParam `,`?
-    FunctionParam1 {
+    FunctionParametersSelfOnly {
         self_param: Box<CSTNode>,
-        comma: Option<Box<CSTNode>>,
     },
 
     // FunctionParameters ::= (SelfParam `,`)? FunctionParam (`,` FunctionParam)* `,`?
-    FunctionParam2 {
-        self_param: Option<(Box<CSTNode>, Box<CSTNode>)>,
-        function_param: Box<CSTNode>,
-        function_param_repeat: Vec<(CSTNode, CSTNode)>,
-        comma: Option<Box<CSTNode>>,
+    FunctionParameters {
+        self_param: Option<Box<CSTNode>>,
+        function_param: Vec<CSTNode>,
     },
+
+    // FunctionParam ::= OuterAttribute* ( FunctionParamPattern | `...` | Type )
+    FunctionParam {
+        outer_attribute: Vec<CSTNode>,
+        pattern: Box<CSTNode>,
+    },
+
+    FunctionParamPattern {
+        pattern_no_top_alt: Box<CSTNode>,
+        pattern: Box<CSTNode>,
+    },
+
+    //
+    SelfParam {
+        outer_attribute: Vec<CSTNode>,
+        self_kind: Box<CSTNode>,
+    },
+
+    TypedSelf {
+        mut_keyword: Option<Box<CSTNode>>,
+        type_expr: Box<CSTNode>,
+    },
+
+    //
+    // Type
+    //
+
+    // Type
+    Type {
+        type_pattern: Box<CSTNode>,
+    },
+
+    TypeNoBounds {
+        type_pattern: Box<CSTNode>,
+    },
+
+    // ParenthesizedType ::= `(` Type `)`
+    ParenthesizedType {
+        type_expression: Box<CSTNode>,
+    },
+
+    TypePath {
+        type_path_segment: Vec<CSTNode>,
+    },
+
+    TypePathFnInputs {
+        type_expr: Vec<CSTNode>,
+    },
+
+    //
+    // Generic
+    //
+
+    // GenericArgsConst ::= BlockExpression | LiteralExpression | `-` LiteralExpression | SimplePathSegment
+    GenericArgsConst {
+        expression: Box<CSTNode>,
+    },
+
+    // QualifiedPathInExpression ::= QualifiedPathType (`::` PathExprSegment)+
+    QualifiedPathInExpression {
+        qualified_path_type: Box<CSTNode>,
+        path_expr_segment: Vec<CSTNode>,
+    },
+
+    //
+    // Expression
+    //
 
     // Expression ::= ExpressionWithoutBlock | ExpressionWithBlock
     Expression {
@@ -179,22 +251,22 @@ pub enum CSTNodeKind {
 
     // PathInExpression ::= `::`? PathExprSegment (`::` PathExprSegment)*
     PathInExpression {
-        path_separater: Option<Box<CSTNode>>,
-        path_expr_segment: Box<CSTNode>,
-        repeat_path_expr_segment: Vec<(CSTNode, CSTNode)>,
+        path_expr_segment: Vec<CSTNode>,
     },
 
     // PathExprSegment ::= PathIdentSegment (`::` GenericArgs)?
     PathExprSegment {
         path_ident_segment: Box<CSTNode>,
-        generic_args: Option<(Box<CSTNode>, Box<CSTNode>)>,
+        generic_args: Option<Box<CSTNode>>,
+    },
+
+    PathIdentSegment {
+        path_ident_segment: Box<CSTNode>,
     },
 
     // GroupedExpression ::= `(` Expression `)`
     GroupedExpression {
-        left_parenthesis: Box<CSTNode>,
         expression: Box<CSTNode>,
-        right_parenthesis: Box<CSTNode>,
     },
 
     // StructExpression ::= StructExprStruct | StructExprTuple | StructExprUnit
@@ -205,16 +277,12 @@ pub enum CSTNodeKind {
     // StructExprStruct ::= PathInExpression `{` (StructExprFields | StructBase)? `}`
     StructExprStruct {
         path_in_expression: Box<CSTNode>,
-        left_brace: Box<CSTNode>,
         expression: Option<Box<CSTNode>>,
-        right_brace: Box<CSTNode>,
     },
 
-    // StructExprFields
+    // StructExprFields ::= StructExprField (, StructExprField)* (, StructBase | ,?)
     StructExprFields {
-        struct_expr_filed: Box<CSTNode>,
-        struct_expr_filed_repeat: Vec<(CSTNode, CSTNode)>,
-        comma: Option<Box<CSTNode>>,
+        struct_expr_filed: Vec<CSTNode>,
         struct_base: Option<Box<CSTNode>>,
     },
 
@@ -223,63 +291,53 @@ pub enum CSTNodeKind {
         outer_attribute: Vec<CSTNode>,
         identifier: Box<CSTNode>,
     },
+
     StructExprField2 {
         outer_attribute: Vec<CSTNode>,
         identifier_or_tuple: Box<CSTNode>,
-        colon: Box<CSTNode>,
         expression: Box<CSTNode>,
     },
 
     // StructBase ::= `..` Expression
     StructBase {
-        dotdot: Box<CSTNode>,
         expression: Box<CSTNode>,
     },
 
     //  CallExpression ::= Expression `(` CallParams? `)`
     CallExpression {
         expression: Box<CSTNode>,
-        left_parenthesis: Box<CSTNode>,
         call_params: Option<Box<CSTNode>>,
-        right_parenthesis: Box<CSTNode>,
     },
 
-    // CallParams     ::= Expression ( `,` Expression )* `,`?
+    // CallParams ::= Expression ( `,` Expression )* `,`?
     CallParams {
-        expression: Box<CSTNode>,
-        comma_and_expression: Vec<(CSTNode, CSTNode)>,
-        comma: Option<Box<CSTNode>>,
+        expression: Vec<CSTNode>,
     },
 
     // ReturnExpression ::= return (Expression)?
     ReturnExpression {
-        return_keyword: Box<CSTNode>,
         expression: Option<Box<CSTNode>>,
     },
 
     // IfExpression ::= `if` Expression BlockExpression (`else` ( BlockExpression | IfExpression | IfLetExpression ) )?
     IfExpression {
-        if_keyword: Box<CSTNode>,
         expression: Box<CSTNode>,
         block_expression: Box<CSTNode>,
-        else_keyword: Option<Box<CSTNode>>,
         else_expression: Option<Box<CSTNode>>,
     },
 
     // IfLetExpression ::= `if` `let` Pattern `=` Scrutinee BlockExpression (`else` ( BlockExpression | IfExpression | IfLetExpression ) )?
     IfLetExpression {
-        if_keyword: Box<CSTNode>,
-        let_keyword: Box<CSTNode>,
         pattern: Box<CSTNode>,
-        equal: Box<CSTNode>,
         scrutinee: Box<CSTNode>,
         block_expression: Box<CSTNode>,
-        else_keyword: Option<Box<CSTNode>>,
         else_expression: Option<Box<CSTNode>>,
     },
 
     // Statements ::= Statement+ | Statement+ ExpressionWithoutBlock | ExpressionWithoutBlock
-    Statements,
+    Statements {
+        statement: Vec<CSTNode>,
+    },
 
     // Statement ::= `;` | Item | LetStatement | ExpressionStatement | MacroInvocationSemi
     Statement {
@@ -287,10 +345,8 @@ pub enum CSTNodeKind {
     },
 
     BlockExpression {
-        left_brace: Box<CSTNode>,
         inner_attribute: Vec<CSTNode>,
         statements: Option<Box<CSTNode>>,
-        right_brace: Box<CSTNode>,
     },
 
     // LetStatement ::= OuterAttribute* (`ur` | `sr` | `nr` | `let`)
@@ -300,16 +356,31 @@ pub enum CSTNodeKind {
         outer_attribute: Vec<CSTNode>,
         rarity: Box<CSTNode>,
         pattern_no_top_alt: Box<CSTNode>,
-        colon: Option<Box<CSTNode>>,
         type_expression: Option<Box<CSTNode>>,
-        equal: Option<Box<CSTNode>>,
         expression: Option<Box<CSTNode>>,
-        else_keyword: Option<Box<CSTNode>>,
         block_expression: Option<Box<CSTNode>>,
-        semicolon: Box<CSTNode>,
+    },
+
+    ExpressionStatement {
+        expression: Box<CSTNode>,
     },
 
     // Pattern
+
+    // Pattern ::= `|`? PatternNoTopAlt ( `|` PatternNoTopAlt )*
+    Pattern {
+        pattern: Vec<CSTNode>,
+    },
+
+    // PatternNoTopAlt ::= PatternWithoutRange | RangePattern
+    PatternNoTopAlt {
+        pattern: Box<CSTNode>,
+    },
+
+    PatternWithoutRange {
+        pattern: Box<CSTNode>,
+    },
+
     LiteralPattern {
         literal: Literal,
     },
@@ -319,7 +390,6 @@ pub enum CSTNodeKind {
         ref_keyword: Option<Box<CSTNode>>,
         mut_keyword: Option<Box<CSTNode>>,
         identifier: Box<CSTNode>,
-        at_symbol: Option<Box<CSTNode>>,
         pattern_no_top_alt: Option<Box<CSTNode>>,
     },
 

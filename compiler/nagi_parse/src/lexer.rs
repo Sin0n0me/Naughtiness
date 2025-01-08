@@ -1,23 +1,24 @@
 use nagi_syntax_tree::keywords::Keyword;
 use nagi_syntax_tree::token::*;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Lexer {
     token_list: Vec<Token>,
     position: usize,
-    token_sorce_postion: Vec<(usize, usize)>,
+    token_sorce_postion: HashMap<usize, (usize, usize)>,
 }
 
 impl Lexer {
     pub fn new(tokenized_token_list: &Vec<nagi_lexer::Token>) -> Self {
         let mut token_list = Vec::<Token>::new();
-        let mut token_sorce_postion = Vec::<(usize, usize)>::new();
+        let mut token_sorce_postion = HashMap::new();
         let mut row = 1;
         let mut column = 1;
         for tokenized_token in tokenized_token_list.iter() {
             if let Some(token) = convert_token(tokenized_token) {
                 token_list.push(token);
-                token_sorce_postion.push((row, column));
+                token_sorce_postion.insert(token_list.len(), (row, column));
             };
 
             for c in tokenized_token.token.chars() {
@@ -116,7 +117,7 @@ impl Lexer {
                 _ => first,
             },
             Token::Or => match self.peek_ahead(1) {
-                Token::Or => Token::Or,
+                Token::Or => Token::OrOr,
                 Token::Equal => Token::OrEqual,
                 _ => first,
             },
@@ -167,7 +168,7 @@ impl Lexer {
 
     pub fn get_sorce_position(&self) -> (usize, usize) {
         self.token_sorce_postion
-            .get(self.position)
+            .get(&self.position)
             .cloned()
             .unwrap_or((0, 0))
     }

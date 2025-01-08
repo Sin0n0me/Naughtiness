@@ -4,10 +4,11 @@ use nagi_command_option::CompileCommandOption;
 
 #[derive(Debug)]
 pub enum ExitStatus {
-    Success = 0,
-    CompileFailure = -1,
-    UnknownCommand = -2,
-    InvalidArgs = -3,
+    Success,
+    CanNotOpenFile,
+    CompileFailure,
+    UnknownCommand,
+    InvalidArgs,
 }
 
 pub fn driver() {
@@ -33,20 +34,26 @@ pub fn driver() {
 }
 
 fn run_compiler(args: &Vec<String>) -> ExitStatus {
-    println!("workdir : {}", env::current_dir().unwrap().display());
     let Ok(compile_option) = CompileCommandOption::new(args) else {
         return ExitStatus::InvalidArgs;
     };
 
+    println!("workdir : {}", env::current_dir().unwrap().display());
+
     let mut cst_list = vec![];
     for target in compile_option.target_list.iter() {
         let Ok(code) = open_file(target) else {
+            return ExitStatus::CanNotOpenFile;
+        };
+
+        println!("open file: {}", target);
+
+        let Ok(cst) = nagi_parse::parse(&code, &compile_option) else {
+            println!("parse failed: {}", target);
             return ExitStatus::CompileFailure;
         };
 
-        let Ok(cst) = nagi_parse::parse(&code, &compile_option) else {
-            return ExitStatus::CompileFailure;
-        };
+        println!("parse success: {}", target);
 
         cst_list.push(cst);
     }
