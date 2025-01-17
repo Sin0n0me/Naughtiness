@@ -4,4 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+nagi_syntax_tree = { version = "0.1.0", path = "../nagi_syntax_tree" }
 inkwell = { version = "0.5.0", features = ["llvm14-0"] }
+
+

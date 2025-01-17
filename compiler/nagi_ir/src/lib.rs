@@ -1,5 +1,3 @@
-use inkwell::builder::Builder;
-use inkwell::context::Context;
-use inkwell::module::Module;
+mod llvm_ir;
 
-pub fn llvm_ir_generator() {}
+pub fn ir_generator() {}
