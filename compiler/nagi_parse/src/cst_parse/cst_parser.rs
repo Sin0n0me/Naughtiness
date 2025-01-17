@@ -2217,6 +2217,16 @@ impl CSTParser {
             return Ok(node);
         }
 
+        // LoopExpression
+        if let Ok(expr) = self.loop_expression() {
+            node.node_kind = CSTNodeKind::ExpressionWithBlock {
+                outer_attribute,
+                expression_with_block: Box::new(expr),
+            };
+            self.write_memo(&key, Some(&node));
+            return Ok(node);
+        }
+
         self.error(SyntaxError::NotMatch, &key)
     }
 
@@ -2271,31 +2281,31 @@ impl CSTParser {
             MemoResult::None => self.write_memo(&key, None),
         };
         let mut node = CSTNode::new(CSTNodeKind::None, vec![]);
-        let mut statement = vec![];
+        let mut statements = vec![];
 
         // Statement+ | Statement+ ExpressionWithoutBlock
         if let Ok(expr1) = self.statement() {
-            statement.push(expr1);
+            statements.push(expr1);
 
             while let Ok(expr2) = self.statement() {
-                statement.push(expr2);
+                statements.push(expr2);
             }
 
             // ExpressionWithoutBlock
             if let Ok(expr3) = self.expression_without_block() {
-                statement.push(expr3);
+                statements.push(expr3);
             }
 
-            node.node_kind = CSTNodeKind::Statements { statement };
+            node.node_kind = CSTNodeKind::Statements { statements };
             self.write_memo(&key, Some(&node));
             return Ok(node);
         }
 
         // ExpressionWithoutBlock
         if let Ok(expr) = self.expression_without_block() {
-            statement.push(expr);
+            statements.push(expr);
 
-            node.node_kind = CSTNodeKind::Statements { statement };
+            node.node_kind = CSTNodeKind::Statements { statements };
             self.write_memo(&key, Some(&node));
             return Ok(node);
         }
@@ -2946,6 +2956,103 @@ impl CSTParser {
 
         // PatternWithoutRange
         self.pattern_without_range()
+    }
+
+    //
+    // LoopExpression
+    //
+
+    // LoopExpression ::= LoopLabel?
+    //                  (
+    //                    InfiniteLoopExpression
+    //                  | PredicateLoopExpression
+    //                  | PredicatePatternLoopExpression
+    //                  | IteratorLoopExpression
+    //                  | LabelBlockExpression
+    //                  )
+    fn loop_expression(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("LoopExpression");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        let mut node = CSTNode::new(CSTNodeKind::None, vec![]);
+        let loop_label = None;
+
+        // InfiniteLoopExpression
+        if let Ok(expr) = self.infinite_loop_expression() {
+            node.node_kind = CSTNodeKind::LoopExpression {
+                loop_label,
+                loop_expression: Box::new(expr),
+            };
+            self.write_memo(&key, Some(&node));
+            return Ok(node);
+        }
+
+        // PredicatePatternLoopExpression
+        if let Ok(expr) = self.predicate_loop_expression() {
+            node.node_kind = CSTNodeKind::LoopExpression {
+                loop_label,
+                loop_expression: Box::new(expr),
+            };
+            self.write_memo(&key, Some(&node));
+            return Ok(node);
+        }
+
+        self.error(SyntaxError::NotMatch, &key)
+    }
+
+    // InfiniteLoopExpression ::= `loop` BlockExpression
+    fn infinite_loop_expression(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("InfiniteLoopExpression");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        let mut node = CSTNode::new(CSTNodeKind::None, vec![]);
+        if !matches!(self.lexer.peek(), Token::Keyword(Keyword::Loop)) {
+            return self.error(SyntaxError::NotMatch, &key);
+        }
+        node.children.push(self.make_factor_and_next());
+
+        let block_expression = Box::new(self.block_expression()?);
+        node.node_kind = CSTNodeKind::InfiniteLoopExpression { block_expression };
+        self.write_memo(&key, Some(&node));
+        Ok(node)
+    }
+
+    // PredicateLoopExpression ::= `while` Expression BlockExpression
+    fn predicate_loop_expression(&mut self) -> Result<CSTNode, Error> {
+        let key = self.make_key("PredicateLoopExpression");
+        match self.get_memo(&key) {
+            MemoResult::Some(res) => return Ok(res),
+            MemoResult::Recursive => return self.error(SyntaxError::Recursed, &key),
+            MemoResult::None => self.write_memo(&key, None),
+        };
+
+        let mut node = CSTNode::new(CSTNodeKind::None, vec![]);
+
+        if !matches!(self.lexer.peek(), Token::Keyword(Keyword::While)) {
+            return self.error(SyntaxError::NotMatch, &key);
+        }
+        node.children.push(self.make_factor_and_next());
+
+        // Expression
+        let expression = Box::new(self.expression()?);
+
+        // BlockExpression
+        let block_expression = Box::new(self.block_expression()?);
+
+        node.node_kind = CSTNodeKind::PredicateLoopExpression {
+            expression,
+            block_expression,
+        };
+        self.write_memo(&key, Some(&node));
+        Ok(node)
     }
 
     //

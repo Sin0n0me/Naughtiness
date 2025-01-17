@@ -54,7 +54,9 @@ pub enum ASTNodeKind {
         attribute: Box<ASTNode>,
     },
 
-    Visibility {},
+    Visibility {
+        path: Option<Box<ASTNode>>,
+    },
 
     VisItem {
         visibility: Option<Box<ASTNode>>,
@@ -133,6 +135,14 @@ pub enum ASTNodeKind {
         statements: Option<Box<ASTNode>>,
     },
 
+    PatternNoTopAlt {
+        pattern: Box<ASTNode>,
+    },
+
+    PatternWithoutRange {
+        pattern: Box<ASTNode>,
+    },
+
     //
     IdentifierPattern {
         ref_keyword: bool,
@@ -164,5 +174,20 @@ pub enum ASTNodeKind {
         type_expression: Option<Box<ASTNode>>,
         expression: Option<Box<ASTNode>>,
         block_expression: Option<Box<ASTNode>>,
+    },
+
+    LoopExpression {
+        loop_label: Option<Box<ASTNode>>,
+        loop_expression: Box<ASTNode>,
+    },
+
+    InfiniteLoopExpression {
+        block_expression: Box<ASTNode>,
+    },
+
+    // PredicateLoopExpression ::= `while` Expression BlockExpression
+    PredicateLoopExpression {
+        expression: Box<ASTNode>,
+        block_expression: Box<ASTNode>,
     },
 }

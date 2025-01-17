@@ -336,7 +336,7 @@ pub enum CSTNodeKind {
 
     // Statements ::= Statement+ | Statement+ ExpressionWithoutBlock | ExpressionWithoutBlock
     Statements {
-        statement: Vec<CSTNode>,
+        statements: Vec<CSTNode>,
     },
 
     // Statement ::= `;` | Item | LetStatement | ExpressionStatement | MacroInvocationSemi
@@ -399,5 +399,29 @@ pub enum CSTNodeKind {
 
     RestPattern {
         rest: Box<CSTNode>,
+    },
+
+    // LoopExpression ::= LoopLabel?
+    //                  (
+    //                    InfiniteLoopExpression
+    //                  | PredicateLoopExpression
+    //                  | PredicatePatternLoopExpression
+    //                  | IteratorLoopExpression
+    //                  | LabelBlockExpression
+    //                  )
+    LoopExpression {
+        loop_label: Option<Box<CSTNode>>,
+        loop_expression: Box<CSTNode>,
+    },
+
+    // InfiniteLoopExpression ::= `loop` BlockExpression
+    InfiniteLoopExpression {
+        block_expression: Box<CSTNode>,
+    },
+
+    // PredicateLoopExpression ::= `while` Expression BlockExpression
+    PredicateLoopExpression {
+        expression: Box<CSTNode>,
+        block_expression: Box<CSTNode>,
     },
 }
