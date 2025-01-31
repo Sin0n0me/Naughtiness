@@ -24,7 +24,7 @@ pub enum LiteralKind {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum TokenKind {
-    Unkown,
+    Unknown,
     Identifier(String),
     Prefix,
     Literal(LiteralKind),

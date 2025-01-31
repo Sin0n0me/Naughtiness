@@ -8,6 +8,8 @@ use nagi_syntax_tree::token::*;
 use crate::type_checker::TypeChecker;
 use crate::SymbolTreeNode;
 
+const todo_command_option: bool = false;
+
 #[derive()]
 pub struct SemanticAnalyzer {
     symbol_table: SymbolTreeNode,
@@ -87,12 +89,16 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
             attribute: Box::new(analyze(attribute, symbol_tree)?),
         }),
 
-        CSTNodeKind::OuterAttribute { attribute } => ASTNode::new(ASTNodeKind::InnerAttribute {
+        CSTNodeKind::OuterAttribute { attribute } => ASTNode::new(ASTNodeKind::OuterAttribute {
             attribute: Box::new(analyze(attribute, symbol_tree)?),
         }),
 
         CSTNodeKind::VisItem { visibility, item } => {
-            analyze_vis_item(symbol_tree, visibility.as_deref(), item)?
+            analyze_vis_item(symbol_tree, visibility.as_deref().cloned(), item)?
+        }
+
+        CSTNodeKind::Visibility { pub_keyword } => {
+            ASTNode::new(ASTNodeKind::Visibility { path: None })
         }
 
         CSTNodeKind::Expression { expression } => ASTNode::new(ASTNodeKind::Expression {
@@ -115,16 +121,19 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
             inner_attribute,
             statements,
         } => {
-            // ブロックの場合はネストしてから
-            let Some(expr) = statements else {
-                panic!();
-            };
             // InnerAttribute
             let mut child = symbol_tree.add_child();
-            let mut inner_attri = vec![];
+            let mut ast_inner_attribute = vec![];
             for attr in inner_attribute {
-                inner_attri.push(analyze(attr, &mut child)?);
+                ast_inner_attribute.push(analyze(attr, &mut child)?);
             }
+
+            let Some(expr) = statements else {
+                return Ok(ASTNode::new(ASTNodeKind::BlockExpression {
+                    inner_attribute: ast_inner_attribute,
+                    statements: None,
+                }));
+            };
 
             // Statement
             let mut statements = None;
@@ -133,7 +142,7 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
             }
 
             ASTNode::new(ASTNodeKind::BlockExpression {
-                inner_attribute: inner_attri,
+                inner_attribute: ast_inner_attribute,
                 statements,
             })
         }
@@ -207,6 +216,16 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
         }
 
         // Pattern
+        CSTNodeKind::PatternNoTopAlt { pattern } => ASTNode::new(ASTNodeKind::PatternNoTopAlt {
+            pattern: Box::new(analyze(pattern, symbol_tree)?),
+        }),
+
+        CSTNodeKind::PatternWithoutRange { pattern } => {
+            ASTNode::new(ASTNodeKind::PatternWithoutRange {
+                pattern: Box::new(analyze(pattern, symbol_tree)?),
+            })
+        }
+
         CSTNodeKind::IdentifierPattern {
             ref_keyword,
             mut_keyword,
@@ -221,18 +240,22 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
         )?,
 
         // Statements
-        CSTNodeKind::Statements { statement } => {
-            let mut statements = vec![];
-            for child in cst.children.iter() {
-                statements.push(analyze(child, symbol_tree)?);
+        CSTNodeKind::Statements { statements } => {
+            let mut ast_statements = vec![];
+            for cst_statement in statements.iter() {
+                ast_statements.push(analyze(cst_statement, symbol_tree)?);
             }
 
-            ASTNode::new(ASTNodeKind::Statements { statements })
+            ASTNode::new(ASTNodeKind::Statements {
+                statements: ast_statements,
+            })
         }
 
         CSTNodeKind::Statement { statement } => ASTNode::new(ASTNodeKind::Statement {
             statement: Some(Box::new(analyze(statement, symbol_tree)?)),
         }),
+
+        CSTNodeKind::ExpressionStatement { expression } => analyze(expression, symbol_tree)?,
 
         CSTNodeKind::LetStatement {
             outer_attribute,
@@ -250,6 +273,61 @@ fn analyze(cst: &CSTNode, symbol_tree: &mut SymbolTreeNode) -> Result<ASTNode, E
             expression,
             block_expression,
         )?,
+
+        CSTNodeKind::IfExpression {
+            expression,
+            block_expression,
+            else_expression,
+        } => {
+            let expression = Box::new(analyze(expression, symbol_tree)?);
+            let block_expression = Box::new(analyze(block_expression, symbol_tree)?);
+            let else_expression = if let Some(expr) = else_expression {
+                Some(Box::new(analyze(expr, symbol_tree)?))
+            } else {
+                None
+            };
+
+            ASTNode::new(ASTNodeKind::IfExpression {
+                expression,
+                block_expression,
+                else_expression,
+            })
+        }
+
+        CSTNodeKind::LoopExpression {
+            loop_label: _,
+            loop_expression,
+        } => ASTNode::new(ASTNodeKind::LoopExpression {
+            loop_label: None, // TODO
+            loop_expression: Box::new(analyze(loop_expression, symbol_tree)?),
+        }),
+
+        CSTNodeKind::InfiniteLoopExpression { block_expression } => {
+            ASTNode::new(ASTNodeKind::InfiniteLoopExpression {
+                block_expression: Box::new(analyze(block_expression, symbol_tree)?),
+            })
+        }
+
+        CSTNodeKind::PredicateLoopExpression {
+            expression,
+            block_expression,
+        } => ASTNode::new(ASTNodeKind::PredicateLoopExpression {
+            expression: Box::new(analyze(expression, symbol_tree)?),
+            block_expression: Box::new(analyze(block_expression, symbol_tree)?),
+        }),
+
+        CSTNodeKind::PathIdentSegment { path_ident_segment } => {
+            analyze(path_ident_segment, symbol_tree)?
+        }
+
+        CSTNodeKind::PathExprSegment {
+            path_ident_segment,
+            generic_args,
+        } => ASTNode::new(ASTNodeKind::PathExprSegment {
+            path_ident_segment: Box::new(analyze(path_ident_segment, symbol_tree)?),
+            generic_args: None, // TODO Box::new(analyze(block_expression, symbol_tree)?),
+        }),
+
         _ => panic!("{:#?}", cst.node_kind),
     };
 
@@ -348,17 +426,136 @@ fn analyze_operator(
         Token::Caret => BinaryOperator::Xor,
         Token::LeftShift => BinaryOperator::LeftShift,
         Token::RightShift => BinaryOperator::RightShiht,
+        Token::And => BinaryOperator::And,
+        Token::Or => BinaryOperator::Or,
+        Token::PlusEqual => BinaryOperator::AddAssign,
+        Token::MinusEqual => BinaryOperator::SubAssign,
+        Token::StarEqual => BinaryOperator::MulAssign,
+        Token::SlashEqual => BinaryOperator::DivAssign,
+        Token::AndEqual => BinaryOperator::AndAssign,
+        Token::OrEqual => BinaryOperator::OrAssign,
+        Token::OrOr => BinaryOperator::ConditionOr,
+        Token::AndAnd => BinaryOperator::ConditionAnd,
+        Token::EqualEqual => BinaryOperator::ConditionCompare,
+        Token::NotEqual => BinaryOperator::ConditionNotCompare,
+        Token::GreaterThan => BinaryOperator::ConditionGreaterThan,
+        Token::GreaterThanOrEqual => BinaryOperator::ConditionGreaterThanEqual,
+        Token::LessThan => BinaryOperator::ConditionLessThan,
+        Token::LessThanOrEqual => BinaryOperator::ConditionLessThanEquel,
         _ => panic!(),
     };
 
-    let left = Box::new(analyze(left_cst.as_ref().unwrap(), symbol_tree)?);
-    let right = Box::new(analyze(right_cst.as_ref().unwrap(), symbol_tree)?);
+    // TODO
+    let right = Box::new(_todo_naming_this_function(
+        symbol_tree,
+        &operator,
+        right_cst.as_ref().unwrap(),
+    )?);
+
+    let left = match operator {
+        // 代入系は右側だけ
+        BinaryOperator::Equal
+        | BinaryOperator::AddAssign
+        | BinaryOperator::SubAssign
+        | BinaryOperator::MulAssign
+        | BinaryOperator::DivAssign
+        | BinaryOperator::ModAssign
+        | BinaryOperator::XorAssign
+        | BinaryOperator::OrAssign
+        | BinaryOperator::AndAssign
+        | BinaryOperator::LeftShiftAssign
+        | BinaryOperator::RightShihtAssign => {
+            let left = Box::new(analyze(left_cst.as_ref().unwrap(), symbol_tree)?);
+
+            if todo_command_option {
+                return Ok(ASTNode::new(ASTNodeKind::Statements {
+                    statements: vec![
+                        // そのまま計算するとバグるので一度元に戻して再度値を変える
+                        ASTNode::new(ASTNodeKind::BinaryOperator {
+                            operator: BinaryOperator::Equal,
+                            left: left.clone(),
+                            right: Box::new(ASTNode::new(ASTNodeKind::BinaryOperator {
+                                operator: BinaryOperator::Xor,
+                                left: left.clone(),
+                                right: Box::new(add_xor(ASTNode::new(ASTNodeKind::Literal {
+                                    literal: Literal::new(LiteralKind::Integer, "0"),
+                                }))),
+                            })),
+                        }),
+                        ASTNode::new(ASTNodeKind::BinaryOperator {
+                            operator,
+                            left: left.clone(),
+                            right,
+                        }),
+                        ASTNode::new(ASTNodeKind::BinaryOperator {
+                            operator: BinaryOperator::XorAssign,
+                            left: left.clone(),
+                            right: Box::new(add_xor(ASTNode::new(ASTNodeKind::Literal {
+                                literal: Literal::new(LiteralKind::Integer, "0"),
+                            }))),
+                        }),
+                    ],
+                }));
+            } else {
+                return Ok(ASTNode::new(ASTNodeKind::BinaryOperator {
+                    operator,
+                    left: left.clone(),
+                    right,
+                }));
+            }
+        }
+
+        _ => Box::new(_todo_naming_this_function(
+            symbol_tree,
+            &operator,
+            left_cst.as_ref().unwrap(),
+        )?),
+    };
 
     Ok(ASTNode::new(ASTNodeKind::BinaryOperator {
         operator,
         left,
         right,
     }))
+}
+
+// TODO TODO TODO
+// hoge > 0 とかの片方がただの定数だと (hoge ^ fuga) > (0 ~ fuga) になるのでそれを防ぐ関数
+fn _todo_naming_this_function(
+    symbol_tree: &mut SymbolTreeNode,
+    operator: &BinaryOperator,
+    cst: &CSTNode,
+) -> Result<ASTNode, Error> {
+    let ast = analyze(cst, symbol_tree)?;
+
+    if matches!(
+        operator,
+        BinaryOperator::ConditionCompare
+            | BinaryOperator::ConditionNotCompare
+            | BinaryOperator::ConditionAnd
+            | BinaryOperator::ConditionOr
+            | BinaryOperator::ConditionLessThan
+            | BinaryOperator::ConditionGreaterThan
+            | BinaryOperator::ConditionLessThanEquel
+            | BinaryOperator::ConditionGreaterThanEqual
+    ) {
+        return Ok(ast);
+    }
+
+    // TODO!!!!!!!!!!!!
+    if let ASTNodeKind::Expression { expression } = &ast.node_kind {
+        if let ASTNodeKind::ExpressionWithoutBlock {
+            outer_attribute,
+            expression,
+        } = &expression.node_kind
+        {
+            if let ASTNodeKind::Literal { literal } = &expression.node_kind {
+                return Ok(ast);
+            }
+        }
+    }
+
+    Ok(add_xor(ast))
 }
 
 fn analyze_function(
@@ -481,7 +678,9 @@ fn analyze_let_statement(
 
     let mut ast_expression = None;
     if let Some(expr) = expression {
-        ast_expression = Some(Box::new(analyze(expr, symbol_tree)?));
+        // TODO 別の場所に移す
+        let ast = add_xor(analyze(expr, symbol_tree)?);
+        ast_expression = Some(Box::new(ast));
     }
 
     let mut ast_block_expression = None;
@@ -497,4 +696,18 @@ fn analyze_let_statement(
         expression: ast_expression,
         block_expression: ast_block_expression,
     }))
+}
+
+fn add_xor(ast: ASTNode) -> ASTNode {
+    if todo_command_option {
+        ASTNode::new(ASTNodeKind::BinaryOperator {
+            operator: BinaryOperator::Xor,
+            left: Box::new(ast),
+            right: Box::new(ASTNode::new(ASTNodeKind::Literal {
+                literal: Literal::new(LiteralKind::Integer, "12648430"),
+            })),
+        })
+    } else {
+        ast
+    }
 }

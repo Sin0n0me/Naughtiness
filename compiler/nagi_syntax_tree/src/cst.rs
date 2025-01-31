@@ -137,6 +137,7 @@ pub enum CSTNodeKind {
         pattern: Box<CSTNode>,
     },
 
+    // FunctionParamPattern ::= PatternNoTopAlt `:` ( Type | `...` )
     FunctionParamPattern {
         pattern_no_top_alt: Box<CSTNode>,
         pattern: Box<CSTNode>,
@@ -173,6 +174,11 @@ pub enum CSTNodeKind {
 
     TypePath {
         type_path_segment: Vec<CSTNode>,
+    },
+
+    TypePathFn {
+        type_path_fn_inputs: Option<Box<CSTNode>>,
+        type_no_bounds: Option<Box<CSTNode>>,
     },
 
     TypePathFnInputs {
@@ -305,7 +311,6 @@ pub enum CSTNodeKind {
 
     //  CallExpression ::= Expression `(` CallParams? `)`
     CallExpression {
-        expression: Box<CSTNode>,
         call_params: Option<Box<CSTNode>>,
     },
 

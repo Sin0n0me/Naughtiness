@@ -16,6 +16,7 @@ pub struct CSTParser {
     lexer: Lexer,
     memo: HashMap<ParseMemoKey, Option<ParseMemoValue<CSTNode>>>,
     min_bp: u16,
+    last_memo: Option<ParseMemoKey>,
 }
 
 // TODO 機能ごとの分割
@@ -27,6 +28,7 @@ impl CSTParser {
             lexer: Lexer::new(token_list),
             memo: HashMap::new(),
             min_bp: 0,
+            last_memo: None,
         }
     }
 
@@ -95,7 +97,7 @@ impl CSTParser {
         // `[`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Brackets)
+            Token::LeftParenthesis(Parenthesis::Brackets)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -107,7 +109,7 @@ impl CSTParser {
         // `]`
         if !matches!(
             self.lexer.peek(),
-            Token::RightParenthesis(RightParenthesis::Brackets)
+            Token::RightParenthesis(Parenthesis::Brackets)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -137,7 +139,7 @@ impl CSTParser {
         // `[`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Brackets)
+            Token::LeftParenthesis(Parenthesis::Brackets)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -148,7 +150,7 @@ impl CSTParser {
         // `]`
         if !matches!(
             self.lexer.peek(),
-            Token::RightParenthesis(RightParenthesis::Brackets)
+            Token::RightParenthesis(Parenthesis::Brackets)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -215,7 +217,7 @@ impl CSTParser {
 
         if matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+            Token::LeftParenthesis(Parenthesis::Parenthesis)
         ) {
             return Ok(pub_keyword);
         }
@@ -348,7 +350,7 @@ impl CSTParser {
         // `(`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+            Token::LeftParenthesis(Parenthesis::Parenthesis)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -363,7 +365,7 @@ impl CSTParser {
         // `)`
         if !matches!(
             self.lexer.peek(),
-            Token::RightParenthesis(RightParenthesis::Parenthesis)
+            Token::RightParenthesis(Parenthesis::Parenthesis)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -889,7 +891,7 @@ impl CSTParser {
         // `(`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+            Token::LeftParenthesis(Parenthesis::Parenthesis)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -901,7 +903,7 @@ impl CSTParser {
         // `)`
         if !matches!(
             self.lexer.peek(),
-            Token::RightParenthesis(RightParenthesis::Parenthesis)
+            Token::RightParenthesis(Parenthesis::Parenthesis)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -954,7 +956,7 @@ impl CSTParser {
         let mut node = CSTNode::new(CSTNodeKind::None, vec![]);
 
         // PathIdentSegment
-        let path_ident_segment = self.path_ident_segment()?;
+        let path_ident_segment = Box::new(self.path_ident_segment()?);
 
         // `::`?
         if matches!(self.lexer.peek_glue(), Token::PathSeparater) {}
@@ -964,7 +966,9 @@ impl CSTParser {
             //
         }
 
-        self.error(SyntaxError::NotMatch, &key)
+        node.node_kind = CSTNodeKind::PathIdentSegment { path_ident_segment };
+        self.write_memo(&key, Some(&node));
+        Ok(node)
     }
 
     // TODO
@@ -981,7 +985,7 @@ impl CSTParser {
         // `(`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+            Token::LeftParenthesis(Parenthesis::Parenthesis)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -996,7 +1000,7 @@ impl CSTParser {
         // `)`
         if !matches!(
             self.lexer.peek(),
-            Token::RightParenthesis(RightParenthesis::Parenthesis)
+            Token::RightParenthesis(Parenthesis::Parenthesis)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -1098,7 +1102,7 @@ impl CSTParser {
             outer_attribute.push(expr);
         }
 
-        // OperatorExpression
+        // OperatorExpression(先に呼ぶ)
         if let Ok(expr) = self.operator_expression() {
             node.node_kind = CSTNodeKind::ExpressionWithoutBlock {
                 outer_attribute,
@@ -1598,7 +1602,18 @@ impl CSTParser {
         self.qualified_path_type()?;
 
         // (`::` TypePathSegment)+
-        self.type_path_segment();
+        let mut type_path_segment = vec![];
+        while let Token::PathSeparater = self.lexer.peek_glue() {
+            let path_separater = self.make_factor_and_next_glue();
+            let Ok(expr) = self.type_path_segment() else {
+                break;
+            };
+            node.children.push(path_separater);
+            type_path_segment.push(expr);
+        }
+        if type_path_segment.is_empty() {
+            return self.error(SyntaxError::NotMatch, &key);
+        }
 
         self.error(SyntaxError::NotMatch, &key)
     }
@@ -1613,7 +1628,24 @@ impl CSTParser {
         };
         let mut node = CSTNode::new(CSTNodeKind::None, vec![]);
 
+        // `::`?
+        if matches!(self.lexer.peek_glue(), Token::PathSeparater) {
+            node.children.push(self.make_factor_and_next_glue());
+        }
+
+        // SimplePathSegment
         self.simple_path_segment()?;
+
+        // (`::` SimplePathSegment)*
+        let mut simple_path_segment = vec![];
+        while let Token::PathSeparater = self.lexer.peek_glue() {
+            let path_separater = self.make_factor_and_next_glue();
+            let Ok(expr) = self.simple_path_segment() else {
+                break;
+            };
+            node.children.push(path_separater);
+            simple_path_segment.push(expr);
+        }
 
         self.error(SyntaxError::NotMatch, &key)
     }
@@ -1643,29 +1675,15 @@ impl CSTParser {
         let min_bp = self.min_bp;
 
         // 前置演算子
-        let mut lhs: CSTNode = if is_operator(&self.lexer.peek_glue()) {
-            let op = self.lexer.peek_glue();
-            let Some(((), right_bp)) = prefix_binding_power(&op) else {
-                return self.error(SyntaxError::ExpectedToken, &key);
-            };
-
-            self.min_bp = right_bp; // 次の再帰のために保存
-            let token = self.lexer.next_glue();
-            let rhs = Some(Box::new(self.operator_expression()?));
-            self.make_operator(token, rhs, None)
-        } else {
-            // TODO Expressionの最初に呼び出す
-            // Expressionの再帰用に呼び出し元だけを削除
-            self.memo.remove(&self.make_key("Expression"));
-            self.memo.remove(&self.make_key("ExpressionWithoutBlock"));
-            self.expression()?
-        };
+        let mut lhs: CSTNode = self.prefix_operator()?;
 
         loop {
             let op = self.lexer.peek_glue();
             if !is_operator(&op) {
                 break;
             }
+
+            // 先にExpressionが必要な場合
 
             // 後置演算子
             if let Some((left_bp, ())) = postfix_binding_power(&op) {
@@ -1694,8 +1712,48 @@ impl CSTParser {
             break;
         }
 
+        self.min_bp = min_bp;
         self.write_memo(&key, Some(&lhs));
         Ok(lhs)
+    }
+
+    fn prefix_operator(&mut self) -> Result<CSTNode, Error> {
+        if is_operator(&self.lexer.peek_glue()) {
+            let op = self.lexer.peek_glue();
+            if let Some(((), right_bp)) = prefix_binding_power(&op) {
+                self.min_bp = right_bp; // 次の再帰のために保存
+                let token = self.lexer.next_glue();
+                let rhs = Some(Box::new(self.operator_expression()?));
+
+                return Ok(self.make_operator(token, rhs, None));
+            }
+        }
+
+        // (
+        if matches!(
+            self.lexer.peek(),
+            Token::LeftParenthesis(Parenthesis::Parenthesis)
+        ) {
+            self.lexer.next();
+            self.min_bp = 0;
+
+            let lhs = self.expression()?;
+            if !matches!(
+                self.lexer.peek(),
+                Token::RightParenthesis(Parenthesis::Parenthesis)
+            ) {
+                panic!();
+            }
+            self.lexer.next();
+
+            return Ok(lhs);
+        }
+
+        // TODO Expressionの最初に呼び出す
+        // Expressionの再帰用に呼び出し元だけを削除
+        self.memo.remove(&self.make_key("Expression"));
+        self.memo.remove(&self.make_key("ExpressionWithoutBlock"));
+        self.expression()
     }
 
     // TODO
@@ -1751,7 +1809,7 @@ impl CSTParser {
         // `(`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+            Token::LeftParenthesis(Parenthesis::Parenthesis)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -1763,7 +1821,7 @@ impl CSTParser {
         // `)`
         if !matches!(
             self.lexer.peek(),
-            Token::RightParenthesis(RightParenthesis::Parenthesis)
+            Token::RightParenthesis(Parenthesis::Parenthesis)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -1829,7 +1887,7 @@ impl CSTParser {
         // `{`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Brace)
+            Token::LeftParenthesis(Parenthesis::Brace)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -1846,7 +1904,7 @@ impl CSTParser {
         // `}`
         if !matches!(
             self.lexer.peek(),
-            Token::RightParenthesis(RightParenthesis::Brace)
+            Token::RightParenthesis(Parenthesis::Brace)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -2006,7 +2064,8 @@ impl CSTParser {
         self.path_in_expression()
     }
 
-    // CallExpression ::= Expression `(` CallParams? `)`
+    // 最初のExpressionは不要
+    // CallExpression ::= `(` CallParams? `)`
     fn call_expression(&mut self) -> Result<CSTNode, Error> {
         let key = self.make_key("CallExpression");
         match self.get_memo(&key) {
@@ -2016,13 +2075,10 @@ impl CSTParser {
         };
         let mut node = CSTNode::new(CSTNodeKind::None, vec![]);
 
-        // Expression
-        let expression = Box::new(self.expression()?);
-
         // `(`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+            Token::LeftParenthesis(Parenthesis::Parenthesis)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -2037,16 +2093,13 @@ impl CSTParser {
         // `)`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+            Token::LeftParenthesis(Parenthesis::Parenthesis)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
         node.children.push(self.make_factor_and_next());
 
-        node.node_kind = CSTNodeKind::CallExpression {
-            expression,
-            call_params,
-        };
+        node.node_kind = CSTNodeKind::CallExpression { call_params };
         self.write_memo(&key, Some(&node));
         Ok(node)
     }
@@ -2243,7 +2296,7 @@ impl CSTParser {
         // `{`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Brace)
+            Token::LeftParenthesis(Parenthesis::Brace)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -2258,7 +2311,7 @@ impl CSTParser {
         // `}`
         if !matches!(
             self.lexer.peek(),
-            Token::RightParenthesis(RightParenthesis::Brace)
+            Token::RightParenthesis(Parenthesis::Brace)
         ) {
             return self.error(SyntaxError::ExpectedToken, &key);
         }
@@ -2283,34 +2336,21 @@ impl CSTParser {
         let mut node = CSTNode::new(CSTNodeKind::None, vec![]);
         let mut statements = vec![];
 
-        // Statement+ | Statement+ ExpressionWithoutBlock
-        if let Ok(expr1) = self.statement() {
-            statements.push(expr1);
-
-            while let Ok(expr2) = self.statement() {
-                statements.push(expr2);
-            }
-
-            // ExpressionWithoutBlock
-            if let Ok(expr3) = self.expression_without_block() {
-                statements.push(expr3);
-            }
-
-            node.node_kind = CSTNodeKind::Statements { statements };
-            self.write_memo(&key, Some(&node));
-            return Ok(node);
+        // Statement+ | Statement+ ExpressionWithoutBlock | ExpressionWithoutBlock
+        while let Ok(expr) = self.statement() {
+            statements.push(expr); // Statement
         }
-
-        // ExpressionWithoutBlock
         if let Ok(expr) = self.expression_without_block() {
-            statements.push(expr);
-
-            node.node_kind = CSTNodeKind::Statements { statements };
-            self.write_memo(&key, Some(&node));
-            return Ok(node);
+            statements.push(expr); // ExpressionWithoutBlock
         }
 
-        self.error(SyntaxError::NotMatch, &key)
+        if statements.is_empty() {
+            self.error(SyntaxError::NotMatch, &key)
+        } else {
+            node.node_kind = CSTNodeKind::Statements { statements };
+            self.write_memo(&key, Some(&node));
+            Ok(node)
+        }
     }
 
     // TODO
@@ -2472,7 +2512,7 @@ impl CSTParser {
         // `{`
         if !matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Brace)
+            Token::LeftParenthesis(Parenthesis::Brace)
         ) {
             return self.error(SyntaxError::NotMatch, &key);
         }
@@ -2489,7 +2529,7 @@ impl CSTParser {
         // `}`
         if !matches!(
             self.lexer.peek(),
-            Token::RightParenthesis(RightParenthesis::Brace)
+            Token::RightParenthesis(Parenthesis::Brace)
         ) {
             return self.error(SyntaxError::NotMatch, &key);
         }
@@ -3140,15 +3180,15 @@ impl CSTParser {
         // `(` TokenTree* `)` `;`
         if matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
+            Token::LeftParenthesis(Parenthesis::Parenthesis)
         ) {
         } else if matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Brackets)
+            Token::LeftParenthesis(Parenthesis::Brackets)
         ) {
         } else if matches!(
             self.lexer.peek(),
-            Token::LeftParenthesis(LeftParenthesis::Brace)
+            Token::LeftParenthesis(Parenthesis::Brace)
         ) {
         }
 
@@ -3203,16 +3243,12 @@ impl CSTParser {
     }
 
     fn write_memo(&mut self, key: &ParseMemoKey, memo: Option<&CSTNode>) {
-        self.log.push_str(&format!(
-            "Write Memo {} pos: {:?} token: {:?} \n",
-            key.rule,
-            key.position,
-            self.lexer.peek()
-        ));
-
         if let Some(node) = memo {
+            self.log
+                .push_str(&format!("Out {} pos: {:?} \n", key.rule, key.position,));
+
             match key.rule.as_str() {
-                "Statement" => self.min_bp = 0,
+                //"Statements" | "Statement" | "ExpressionWithBlock" => self.min_bp = 0, // 優先順位のリセット
                 _ => (),
             };
 
@@ -3224,25 +3260,26 @@ impl CSTParser {
                 }),
             );
         } else {
+            self.log.push_str(&format!(
+                "In {} pos: {:?} token: {:?} bp: {:?} \n",
+                key.rule,
+                key.position,
+                self.lexer.peek(),
+                self.min_bp,
+            ));
+
             self.memo.insert(key.clone(), None);
         }
     }
 
     fn get_memo(&mut self, key: &ParseMemoKey) -> MemoResult<CSTNode> {
         let Some(node) = self.memo.get(key) else {
-            self.log.push_str(&format!(
-                "First call to {} pos: {:?} token: {:?} \n",
-                key.rule,
-                key.position,
-                self.lexer.peek()
-            ));
-
             return MemoResult::None;
         };
 
         let Some(value) = node else {
             self.log.push_str(&format!(
-                "Recursed {} pos: {:?} token: {:?}\n",
+                "Out Recursed {} pos: {:?} token: {:?}\n",
                 key.rule,
                 key.position,
                 self.lexer.peek()
@@ -3251,6 +3288,9 @@ impl CSTParser {
             return MemoResult::Recursive;
         };
 
+        // メモがあった場合解析が進んだ場所まで移動
+        self.lexer.set_postion(value.next_position);
+
         self.log.push_str(&format!(
             "Use memo {} pos: {:?} token: {:?}\n",
             key.rule,
@@ -3258,8 +3298,6 @@ impl CSTParser {
             self.lexer.peek()
         ));
 
-        // メモがあった場合解析が進んだ場所まで移動
-        self.lexer.set_postion(value.next_position);
         MemoResult::Some(value.node.clone())
     }
 
@@ -3269,15 +3307,17 @@ impl CSTParser {
 
     // まともなエラー出力用のプロジェクトができるまで仮で
     fn error(&mut self, error_type: SyntaxError, key: &ParseMemoKey) -> Result<CSTNode, Error> {
+        self.backtrack(key.position);
+
         self.log.push_str(&format!(
-            "Error({:?}) {} pos: {:?} token: {:?}\n",
+            "Out Error({:?}) {} pos: {:?} bp: {:?} token: {:?}, glued token:{:?}\n",
             error_type,
             key.rule,
             key.position,
-            self.lexer.peek()
+            self.min_bp,
+            self.lexer.peek(),
+            self.lexer.peek_glue(),
         ));
-
-        self.backtrack(key.position);
 
         Err(Error {
             error_kind: ErrorKind::Syntax(error_type),

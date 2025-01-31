@@ -81,6 +81,21 @@ pub enum ASTNodeKind {
         abi: Option<Box<ASTNode>>,
     },
 
+    FunctionParameters {
+        self_param: Option<Box<ASTNode>>,
+        function_param: Vec<ASTNode>,
+    },
+
+    FunctionParam {
+        outer_attribute: Vec<ASTNode>,
+        pattern: Box<ASTNode>,
+    },
+
+    FunctionParamPattern {
+        pattern_no_top_alt: Box<ASTNode>,
+        type_expression: Box<ASTNode>,
+    },
+
     Expression {
         expression: Box<ASTNode>,
     },
@@ -189,5 +204,10 @@ pub enum ASTNodeKind {
     PredicateLoopExpression {
         expression: Box<ASTNode>,
         block_expression: Box<ASTNode>,
+    },
+
+    // Type
+    Type {
+        types: Types,
     },
 }

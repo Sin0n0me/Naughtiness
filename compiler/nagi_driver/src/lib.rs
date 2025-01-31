@@ -1,6 +1,7 @@
-use std::{env, fs, process, time::Instant};
-
+use backtrace::Backtrace;
 use nagi_command_option::CompileCommandOption;
+use std::panic;
+use std::{env, fs, process, time::Instant};
 
 #[derive(Debug)]
 pub enum ExitStatus {
@@ -38,6 +39,12 @@ fn run_compiler(args: &Vec<String>) -> ExitStatus {
         return ExitStatus::InvalidArgs;
     };
 
+    panic::set_hook(Box::new(|info| {
+        let backtrace = Backtrace::new();
+        println!("{:?}", info);
+        println!("{:?}", backtrace);
+    }));
+
     println!("workdir : {}", env::current_dir().unwrap().display());
 
     let mut cst_list = vec![];
@@ -55,6 +62,7 @@ fn run_compiler(args: &Vec<String>) -> ExitStatus {
 
         println!("parse success: {}", target);
 
+        cst.write_cst("cst.json");
         cst_list.push(cst);
     }
 
@@ -64,9 +72,12 @@ fn run_compiler(args: &Vec<String>) -> ExitStatus {
             return ExitStatus::CompileFailure;
         };
 
-        ast.write_ast("a.json"); // test
+        ast.write_ast("ast.json");
         ast_list.push(ast);
     }
+
+    // TODO
+    nagi_ir::ir_generator(&ast_list.first().unwrap());
 
     ExitStatus::Success
 }

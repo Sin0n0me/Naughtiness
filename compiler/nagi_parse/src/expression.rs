@@ -29,23 +29,23 @@ pub fn infix_binding_power(op: &Token) -> Option<(u16, u16)> {
         | Token::LessThan
         | Token::GreaterThan
         | Token::LessThanOrEqual
-        | Token::GreaterThanOrEqual => (7, 6),
+        | Token::GreaterThanOrEqual => (6, 7),
 
-        Token::AndAnd => (6, 5),
-        Token::OrOr => (5, 4),
-        Token::DotDot | Token::DotDotEqual => (4, 3),
-        Token::LeftAllow => (3, 2),
+        Token::AndAnd => (5, 6),
+        Token::OrOr => (4, 5),
+        Token::DotDot | Token::DotDotEqual => (3, 4),
+        Token::LeftAllow => (2, 3),
 
         // Assignment
-        Token::Equal => (2, 1),
-        Token::PlusEqual => (2, 1),
-        Token::MinusEqual => (2, 1),
-        Token::StarEqual => (2, 1),
-        Token::SlashEqual => (2, 1),
-        Token::PercentEqual => (2, 1),
-        Token::CaretEqual => (2, 1),
-        Token::AndEqual => (2, 1),
-        Token::OrEqual => (2, 1),
+        Token::Equal => (1, 2),
+        Token::PlusEqual => (1, 2),
+        Token::MinusEqual => (1, 2),
+        Token::StarEqual => (1, 2),
+        Token::SlashEqual => (1, 2),
+        Token::PercentEqual => (1, 2),
+        Token::CaretEqual => (1, 2),
+        Token::AndEqual => (1, 2),
+        Token::OrEqual => (1, 2),
 
         _ => return None,
     };

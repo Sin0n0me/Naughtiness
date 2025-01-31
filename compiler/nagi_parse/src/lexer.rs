@@ -81,7 +81,7 @@ impl Lexer {
 
     pub fn glue(&self) -> Option<(Token, usize)> {
         let first = self.peek();
-        let res = match first {
+        let result = match first {
             Token::Plus => match self.peek_ahead(1) {
                 Token::Equal => Token::PlusEqual,
                 _ => first,
@@ -150,27 +150,20 @@ impl Lexer {
             _ => return None,
         };
 
-        if matches!(&res, first) {
-            Some((res, 1))
+        if result == self.peek() {
+            Some((result, 1))
         } else if matches!(
-            &res,
+            &result,
             Token::LeftShiftEqual | Token::RightShiftEqual | Token::DotDotDot | Token::DotDotEqual
         ) {
-            Some((res, 3))
+            Some((result, 3))
         } else {
-            Some((res, 2))
+            Some((result, 2))
         }
     }
 
     pub fn get_token_position(&self) -> usize {
         self.position
-    }
-
-    pub fn get_sorce_position(&self) -> (usize, usize) {
-        self.token_sorce_postion
-            .get(&self.position)
-            .cloned()
-            .unwrap_or((0, 0))
     }
 }
 
@@ -184,6 +177,7 @@ fn convert_token(token: &nagi_lexer::Token) -> Option<Token> {
             }
         }
 
+        // TODO
         nagi_lexer::TokenKind::Literal(literal_kind) => match literal_kind {
             nagi_lexer::LiteralKind::BinLiteral
             | nagi_lexer::LiteralKind::OctLiteral
@@ -194,19 +188,26 @@ fn convert_token(token: &nagi_lexer::Token) -> Option<Token> {
             nagi_lexer::LiteralKind::FloatLiteral(_) => {
                 Token::Literal(Literal::new(LiteralKind::Float, &token.token))
             }
+            nagi_lexer::LiteralKind::StringLiteral => {
+                Token::Literal(Literal::new(LiteralKind::Str, &token.token))
+            }
+            nagi_lexer::LiteralKind::CharacterLiteral => {
+                Token::Literal(Literal::new(LiteralKind::Char, &token.token))
+            }
+            nagi_lexer::LiteralKind::RawStringLiteral => {
+                Token::Literal(Literal::new(LiteralKind::StrRaw, &token.token))
+            }
             _ => return None,
         },
 
-        nagi_lexer::TokenKind::LeftParenthesis => {
-            Token::LeftParenthesis(LeftParenthesis::Parenthesis)
-        }
-        nagi_lexer::TokenKind::LeftBrackets => Token::LeftParenthesis(LeftParenthesis::Brackets),
-        nagi_lexer::TokenKind::LeftBrace => Token::LeftParenthesis(LeftParenthesis::Brace),
+        nagi_lexer::TokenKind::LeftParenthesis => Token::LeftParenthesis(Parenthesis::Parenthesis),
+        nagi_lexer::TokenKind::LeftBrackets => Token::LeftParenthesis(Parenthesis::Brackets),
+        nagi_lexer::TokenKind::LeftBrace => Token::LeftParenthesis(Parenthesis::Brace),
         nagi_lexer::TokenKind::RightParenthesis => {
-            Token::RightParenthesis(RightParenthesis::Parenthesis)
+            Token::RightParenthesis(Parenthesis::Parenthesis)
         }
-        nagi_lexer::TokenKind::RightBrackets => Token::RightParenthesis(RightParenthesis::Brackets),
-        nagi_lexer::TokenKind::RightBrace => Token::RightParenthesis(RightParenthesis::Brace),
+        nagi_lexer::TokenKind::RightBrackets => Token::RightParenthesis(Parenthesis::Brackets),
+        nagi_lexer::TokenKind::RightBrace => Token::RightParenthesis(Parenthesis::Brace),
 
         nagi_lexer::TokenKind::Equal => Token::Equal,
         nagi_lexer::TokenKind::Plus => Token::Plus,
@@ -233,6 +234,7 @@ fn convert_token(token: &nagi_lexer::Token) -> Option<Token> {
         nagi_lexer::TokenKind::Eof => Token::Eof,
 
         nagi_lexer::TokenKind::WhiteSpace => return None,
+        nagi_lexer::TokenKind::Comment => return None,
         _ => panic!("{:?}", token),
     };
 
