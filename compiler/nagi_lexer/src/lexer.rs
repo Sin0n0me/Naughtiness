@@ -24,7 +24,7 @@ impl Lexer {
             token_list.push(token);
         }
 
-        //println!("Token: {:?}", token);
+        //println!("Token: {:?}", token_list);
         token_list
     }
 
@@ -47,7 +47,7 @@ impl Lexer {
 
                         TokenKind::Literal(literal)
                     }
-                    _ => TokenKind::Unkown,
+                    _ => TokenKind::Unknown,
                 }
             }
             '/' => match self.get_next()? {
@@ -82,10 +82,12 @@ impl Lexer {
             '{' => TokenKind::LeftBrace,
             '}' => TokenKind::RightBrace,
 
+            '"' | '\'' => self.literal_string(), // TODO
+
             _ if self.is_identifier_start() => self.identifier_or_unknown(),
             _ if self.is_white_space() => self.white_space(),
 
-            _ => TokenKind::Unkown,
+            _ => TokenKind::Unknown,
         };
         if !matches!(
             token_kind,
@@ -116,7 +118,7 @@ impl Lexer {
 
     fn identifier_or_unknown(&mut self) -> TokenKind {
         if !self.is_identifier_start() {
-            return TokenKind::Unkown;
+            return TokenKind::Unknown;
         }
 
         if self.get().unwrap() == '_' {
@@ -129,7 +131,7 @@ impl Lexer {
         }
 
         if !self.eat_identifier_or_keyword() {
-            return TokenKind::Unkown;
+            return TokenKind::Unknown;
         }
 
         TokenKind::Identifier(self.token_buffer.clone())
@@ -229,7 +231,10 @@ impl Lexer {
                     '0'..='9' | '_' => LiteralKind::DecLiteral,
                     '.' => LiteralKind::DecLiteral, // 後続で処理するためにこの時点では10進数として扱う
                     _ if is_identifier_start(second) => LiteralKind::DecLiteral,
-                    _ => return LiteralKind::Unknown,
+                    _ => {
+                        self.push_char(); // push 0
+                        return LiteralKind::DecLiteral;
+                    }
                 }
             }
             _ => LiteralKind::DecLiteral,
@@ -503,6 +508,70 @@ impl Lexer {
 
     // StringLiteral  ::= " (~[" \ IsolatedCR] | QuoteEscape | AsciiEscape | UnicodeEscape | StringContinue)* " Suffix?
     // StringContinue ::= \ followed by \n
+    fn literal_string(&mut self) -> TokenKind {
+        // "
+        let Some(expect_first_double_quote) = self.get() else {
+            return TokenKind::Unknown;
+        };
+        if expect_first_double_quote != '"' {
+            return TokenKind::Unknown;
+        }
+        self.push_char(); // push "
+
+        self.eat_string_literal();
+
+        // "
+        let Some(expect_first_double_quote) = self.get() else {
+            return TokenKind::Unknown;
+        };
+        if expect_first_double_quote != '"' {
+            return TokenKind::Unknown;
+        }
+        self.push_char();
+
+        TokenKind::Literal(LiteralKind::StringLiteral)
+    }
+
+    fn eat_string_literal(&mut self) {
+        loop {
+            if self.eat_quote_escape() {
+                continue;
+            }
+            if self.eat_ascii_escape() {
+                continue;
+            }
+            if self.eat_unicode_escape() {
+                continue;
+            }
+            if self.eat_string_continue() {
+                continue;
+            }
+            if self.eat_not_isolated_cr() {
+                continue;
+            }
+            break;
+        }
+    }
+
+    // TODO
+    fn eat_not_isolated_cr(&mut self) -> bool {
+        let Some(c) = self.get() else {
+            return false;
+        };
+
+        match c {
+            '\"' | '\\' => false,
+            _ => {
+                self.push_char();
+                true
+            }
+        }
+    }
+
+    // TODO
+    fn eat_string_continue(&mut self) -> bool {
+        false
+    }
 
     // RawStringLiteral ::= r RawStringContent Suffix?
     // RawStringContent ::= " (~ IsolatedCR)* (non-greedy) " | # RawStringContent #
@@ -679,10 +748,60 @@ impl Lexer {
     // Comment
 
     fn line_comment(&mut self) -> TokenKind {
+        let Some(c1) = self.get() else {
+            return TokenKind::Unknown;
+        };
+        let Some(c2) = self.get_next() else {
+            return TokenKind::Unknown;
+        };
+
+        if c1 != '/' || c2 != '/' {
+            return TokenKind::Unknown;
+        }
+        self.push_char(); // push /
+        self.push_char(); // push /
+
+        while let Some(c) = self.get() {
+            if c == '\n' {
+                break;
+            }
+            self.push_char();
+        }
+
         TokenKind::Comment
     }
 
     fn block_comment(&mut self) -> TokenKind {
+        let Some(c1) = self.get() else {
+            return TokenKind::Unknown;
+        };
+        let Some(c2) = self.get_next() else {
+            return TokenKind::Unknown;
+        };
+
+        if c1 != '/' || c2 != '*' {
+            return TokenKind::Unknown;
+        }
+        self.push_char(); // push /
+        self.push_char(); // push *
+
+        loop {
+            let Some(c1) = self.get() else {
+                return TokenKind::Unknown;
+            };
+            let Some(c2) = self.get_next() else {
+                return TokenKind::Unknown;
+            };
+
+            if c1 == '*' && c2 == '/' {
+                self.push_char(); // push *
+                self.push_char(); // push /
+                break;
+            }
+
+            self.push_char();
+        }
+
         TokenKind::Comment
     }
 

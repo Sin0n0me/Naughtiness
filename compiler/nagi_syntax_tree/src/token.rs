@@ -14,6 +14,25 @@ pub enum BinaryOperator {
     And,
     LeftShift,
     RightShiht,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    XorAssign,
+    OrAssign,
+    AndAssign,
+    LeftShiftAssign,
+    RightShihtAssign,
+
+    ConditionCompare,
+    ConditionNotCompare,
+    ConditionAnd,
+    ConditionOr,
+    ConditionLessThan,
+    ConditionGreaterThan,
+    ConditionLessThanEquel,
+    ConditionGreaterThanEqual,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -33,17 +52,10 @@ pub enum LiteralKind {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub enum LeftParenthesis {
-    Parenthesis, // (
-    Brackets,    // [
-    Brace,       // {
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub enum RightParenthesis {
-    Parenthesis, // )
-    Brackets,    // ]
-    Brace,       // }
+pub enum Parenthesis {
+    Parenthesis, // ()
+    Brackets,    // []
+    Brace,       // {}
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -52,6 +64,27 @@ pub struct Literal {
     pub prefix: String,
     pub symbol: String,
     pub suffix: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum BitWidth {
+    Bit8,
+    Bit16,
+    Bit32,
+    Bit64,
+    Bit128,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Types {
+    Integer {
+        bit_width: BitWidth,
+        is_unsigned: bool,
+    },
+    Float(BitWidth),
+    Pointer,
+    Array,
+    Struct(Vec<Types>),
 }
 
 impl Literal {
@@ -73,8 +106,8 @@ pub enum Token {
     Keyword(Keyword),
 
     //
-    LeftParenthesis(LeftParenthesis),
-    RightParenthesis(RightParenthesis),
+    LeftParenthesis(Parenthesis),
+    RightParenthesis(Parenthesis),
 
     // operator
     Plus,               // +

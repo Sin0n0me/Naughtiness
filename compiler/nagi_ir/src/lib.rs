@@ -1,14 +1,18 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+mod llvm_ir;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+use crate::llvm_ir::llvm_ir_generator::LLVMGenerator;
+use inkwell::context::Context;
+use nagi_syntax_tree::ast::*;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+pub fn ir_generator(ast: &ASTNode) {
+    let context = Context::create();
+    let machine = LLVMGenerator::host_machine().expect("failed to create machine");
+    let mut llvm_generator = LLVMGenerator::new(&context, machine);
+
+    llvm_generator.compile(ast);
+
+    if let Err(e) = llvm_generator.output_execute_file("./test") {
+        llvm_generator.print_log();
+        panic!("{:?}", e);
     }
 }

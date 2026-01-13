@@ -54,7 +54,14 @@ pub enum ASTNodeKind {
         attribute: Box<ASTNode>,
     },
 
-    Visibility {},
+    Visibility {
+        path: Option<Box<ASTNode>>,
+    },
+
+    VisItem {
+        visibility: Option<Box<ASTNode>>,
+        item: Box<ASTNode>,
+    },
 
     Function {
         function_qualifiers: Box<ASTNode>,
@@ -72,6 +79,21 @@ pub enum ASTNodeKind {
         item_safety: Option<Box<ASTNode>>,
         extern_keyword: bool,
         abi: Option<Box<ASTNode>>,
+    },
+
+    FunctionParameters {
+        self_param: Option<Box<ASTNode>>,
+        function_param: Vec<ASTNode>,
+    },
+
+    FunctionParam {
+        outer_attribute: Vec<ASTNode>,
+        pattern: Box<ASTNode>,
+    },
+
+    FunctionParamPattern {
+        pattern_no_top_alt: Box<ASTNode>,
+        type_expression: Box<ASTNode>,
     },
 
     Expression {
@@ -94,8 +116,7 @@ pub enum ASTNodeKind {
 
     // PathInExpression ::= `::`? PathExprSegment (`::` PathExprSegment)*
     PathInExpression {
-        path_expr_segment: Box<ASTNode>,
-        repeat_path_expr_segment: Vec<ASTNode>,
+        path_expr_segment: Vec<ASTNode>,
     },
 
     // PathExprSegment ::= PathIdentSegment (`::` GenericArgs)?
@@ -129,6 +150,14 @@ pub enum ASTNodeKind {
         statements: Option<Box<ASTNode>>,
     },
 
+    PatternNoTopAlt {
+        pattern: Box<ASTNode>,
+    },
+
+    PatternWithoutRange {
+        pattern: Box<ASTNode>,
+    },
+
     //
     IdentifierPattern {
         ref_keyword: bool,
@@ -160,5 +189,25 @@ pub enum ASTNodeKind {
         type_expression: Option<Box<ASTNode>>,
         expression: Option<Box<ASTNode>>,
         block_expression: Option<Box<ASTNode>>,
+    },
+
+    LoopExpression {
+        loop_label: Option<Box<ASTNode>>,
+        loop_expression: Box<ASTNode>,
+    },
+
+    InfiniteLoopExpression {
+        block_expression: Box<ASTNode>,
+    },
+
+    // PredicateLoopExpression ::= `while` Expression BlockExpression
+    PredicateLoopExpression {
+        expression: Box<ASTNode>,
+        block_expression: Box<ASTNode>,
+    },
+
+    // Type
+    Type {
+        types: Types,
     },
 }

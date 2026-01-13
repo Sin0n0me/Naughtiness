@@ -1,13 +1,15 @@
-use std::{env, fs, process, time::Instant};
-
+use backtrace::Backtrace;
 use nagi_command_option::CompileCommandOption;
+use std::panic;
+use std::{env, fs, process, time::Instant};
 
 #[derive(Debug)]
 pub enum ExitStatus {
-    Success = 0,
-    CompileFailure = -1,
-    UnknownCommand = -2,
-    InvalidArgs = -3,
+    Success,
+    CanNotOpenFile,
+    CompileFailure,
+    UnknownCommand,
+    InvalidArgs,
 }
 
 pub fn driver() {
@@ -33,21 +35,34 @@ pub fn driver() {
 }
 
 fn run_compiler(args: &Vec<String>) -> ExitStatus {
-    println!("workdir : {}", env::current_dir().unwrap().display());
     let Ok(compile_option) = CompileCommandOption::new(args) else {
         return ExitStatus::InvalidArgs;
     };
 
+    panic::set_hook(Box::new(|info| {
+        let backtrace = Backtrace::new();
+        println!("{:?}", info);
+        println!("{:?}", backtrace);
+    }));
+
+    println!("workdir : {}", env::current_dir().unwrap().display());
+
     let mut cst_list = vec![];
     for target in compile_option.target_list.iter() {
         let Ok(code) = open_file(target) else {
-            return ExitStatus::CompileFailure;
+            return ExitStatus::CanNotOpenFile;
         };
+
+        println!("open file: {}", target);
 
         let Ok(cst) = nagi_parse::parse(&code, &compile_option) else {
+            println!("parse failed: {}", target);
             return ExitStatus::CompileFailure;
         };
 
+        println!("parse success: {}", target);
+
+        cst.write_cst("cst.json");
         cst_list.push(cst);
     }
 
@@ -57,9 +72,12 @@ fn run_compiler(args: &Vec<String>) -> ExitStatus {
             return ExitStatus::CompileFailure;
         };
 
-        ast.write_ast("a.json"); // test
+        ast.write_ast("ast.json");
         ast_list.push(ast);
     }
+
+    // TODO
+    nagi_ir::ir_generator(&ast_list.first().unwrap());
 
     ExitStatus::Success
 }
